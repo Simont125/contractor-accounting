@@ -881,13 +881,19 @@ function generateInvoice_(key, month, employer, allRows) {
   const ss = SpreadsheetApp.create(fileName);
   const ws = ss.getActiveSheet();
 
-  // Column widths matching original (Excel chars × 7 ≈ px)
-  ws.setColumnWidth(1, 18);   // A - left margin
-  ws.setColumnWidth(2, 216);  // B - main label
-  ws.setColumnWidth(3, 166);  // C - plane
-  ws.setColumnWidth(4, 76);   // D - hours / invoice info
-  ws.setColumnWidth(5, 211);  // E - amount
-  ws.setColumnWidth(6, 18);   // F - right margin
+  // Column widths — px values calibrated for Google→Excel export scaling (~×1.138)
+  ws.setColumnWidth(1, 20);   // A → 2.63
+  ws.setColumnWidth(2, 246);  // B → 30.88
+  ws.setColumnWidth(3, 189);  // C → 23.75
+  ws.setColumnWidth(4, 86);   // D → 10.88
+  ws.setColumnWidth(5, 240);  // E → 30.13
+  ws.setColumnWidth(6, 20);   // F → 2.63
+
+  // Row heights (Google Apps Script px: Excel pt × 96/72)
+  ws.setRowHeight(1, 70);  // 52.5pt — 24pt font title
+  ws.setRowHeight(2, 40);  // 30.0pt — 18pt font
+  for (let r = 3; r <= 8; r++) ws.setRowHeight(r, 26); // 19.5pt
+  ws.setRowHeight(9, 40);  // 30.0pt — table header
 
   const NEAR_WHITE = '#F0F0F0';
   const BLUE_TEXT  = '#166982';
@@ -944,32 +950,45 @@ function generateInvoice_(key, month, employer, allRows) {
     ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0).setFontSize(11);
     ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00').setFontSize(11);
     if (bg) ws.getRange(dataRow, 2, 1, 4).setBackground(bg);
+    ws.setRowHeight(dataRow, 26); // 19.5pt
     dataRow++;
   });
 
-  // Totals (3 blank rows gap)
+  // 3 blank separator rows (19.5pt each)
+  for (let r = dataRow; r < dataRow + 3; r++) ws.setRowHeight(r, 29); // 21.75pt
   dataRow += 3;
+
   ws.getRange(dataRow, 2).setValue('TVQ (' + INVOICE_CONFIG.TVQ_NUMBER + ')').setFontSize(11).setBackground(LIGHT);
   ws.getRange(dataRow, 5).setValue(tvq).setNumberFormat('#,##0.00').setFontSize(11).setBackground(LIGHT);
+  ws.setRowHeight(dataRow, 28); // 21.0pt
   dataRow++;
 
   ws.getRange(dataRow, 2).setValue('TPS (' + INVOICE_CONFIG.TPS_NUMBER + ')').setFontSize(11);
   ws.getRange(dataRow, 5).setValue(tps).setNumberFormat('#,##0.00').setFontSize(11);
+  ws.setRowHeight(dataRow, 27); // 20.25pt
   dataRow++;
 
   ws.getRange(dataRow, 2).setValue('EXPEDITION FEES').setFontSize(11);
-  ws.getRange(dataRow, 5).setValue('').setFontSize(11);
+  ws.setRowHeight(dataRow, 29); // 21.75pt
   dataRow++;
 
   ws.getRange(dataRow, 2).setValue('TOTAL').setFontWeight('bold').setFontSize(11);
   ws.getRange(dataRow, 5).setValue(total).setNumberFormat('#,##0.00').setFontWeight('bold').setFontSize(11);
-  dataRow += 2;
+  ws.setRowHeight(dataRow, 28); // 21.0pt
+  dataRow++;
+
+  // 2 blank rows before footer
+  ws.setRowHeight(dataRow, 28);
+  ws.setRowHeight(dataRow + 1, 40); // 30pt — pre-footer
+  dataRow++;
 
   ws.getRange(dataRow, 2).setValue('Thank you for your trust in me!')
     .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
+  ws.setRowHeight(dataRow, 40); // 30.0pt
   dataRow++;
   ws.getRange(dataRow, 2).setValue(INVOICE_CONFIG.SIGN_OFF)
     .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
+  ws.setRowHeight(dataRow, 40); // 30.0pt
 
   // Export as XLSX via Sheets export URL
   SpreadsheetApp.flush();
@@ -1059,6 +1078,21 @@ function debugOneExpense() {
   Logger.log('AFTER NORMALIZE + VALIDATE:\n' + JSON.stringify(extraction, null, 2));
 
   // File is NOT moved — debug only
+}
+
+function forceRegenerateMayInvoice() {
+  const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const f = files.next();
+    if (f.getName().indexOf('May 2026') !== -1) { f.setTrashed(true); Logger.log('Trashed: ' + f.getName()); }
+  }
+  const props = PropertiesService.getScriptProperties();
+  const generated = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete generated['2026-05|Innotech'];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(generated));
+  generateAllInvoices();
+  Logger.log('done');
 }
 
 
