@@ -899,39 +899,37 @@ function generateInvoice_(key, month, employer, allRows) {
   const BLUE_TEXT  = '#166982';
 
   // Row 1 — Name | Invoice
-  ws.getRange('B1').setValue(INVOICE_CONFIG.MY_NAME)
+  ws.getRange('B1:C1').merge().setValue(INVOICE_CONFIG.MY_NAME)
     .setBackground(LIGHT).setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(24);
-  ws.getRange('C1').setBackground(LIGHT);
-  ws.getRange('D1').setValue('Invoice')
+  ws.getRange('D1:E1').merge().setValue('Invoice')
     .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(18);
-  ws.getRange('E1').setBackground(DARK);
 
   // Row 2 — Email | Invoice Number
-  ws.getRange('B2').setValue(INVOICE_CONFIG.MY_EMAIL)
+  ws.getRange('B2:C2').merge().setValue(INVOICE_CONFIG.MY_EMAIL)
     .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
-  ws.getRange('C2').setBackground(LIGHT);
-  ws.getRange('D2').setValue('Invoice Number :     ' + invoiceNumber)
+  
+  ws.getRange('D2:E2').merge().setValue('Invoice Number :     ' + invoiceNumber)
     .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
-  ws.getRange('E2').setBackground(DARK);
+  
 
   // Row 3 — Phone | Date
-  ws.getRange('B3').setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE)
+  ws.getRange('B3:C3').merge().setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE)
     .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
-  ws.getRange('C3').setBackground(LIGHT);
-  ws.getRange('D3').setValue('Date of invoice :       ' + invoiceDate)
+  
+  ws.getRange('D3:E3').merge().setValue('Date of invoice :       ' + invoiceDate)
     .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
-  ws.getRange('E3').setBackground(DARK);
+  
 
   // Addresses
-  ws.getRange('B4').setValue('Invoice to :').setFontWeight('bold').setFontSize(11);
-  ws.getRange('D4').setValue('Send at :').setFontWeight('bold').setFontSize(11);
-  ws.getRange('B5').setValue(employerInfo[0]).setFontSize(11);
-  ws.getRange('D5').setValue(INVOICE_CONFIG.MY_NAME).setFontSize(11);
-  ws.getRange('B6').setValue(employerInfo[1]).setFontSize(11);
-  ws.getRange('D6').setValue(INVOICE_CONFIG.MY_ADDRESS).setFontSize(11);
-  ws.getRange('B7').setValue(employerInfo[2]).setFontSize(11);
-  ws.getRange('D7').setValue(INVOICE_CONFIG.MY_CITY).setFontSize(11);
-  ws.getRange('D8').setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
+  ws.getRange('B4:C4').merge().setValue('Invoice to :').setFontWeight('bold').setFontSize(11);
+  ws.getRange('D4:E4').merge().setValue('Send at :').setFontWeight('bold').setFontSize(11);
+  ws.getRange('B5:C5').merge().setValue(employerInfo[0]).setFontSize(11);
+  ws.getRange('D5:E5').merge().setValue(INVOICE_CONFIG.MY_NAME).setFontSize(11);
+  ws.getRange('B6:C6').merge().setValue(employerInfo[1]).setFontSize(11);
+  ws.getRange('D6:E6').merge().setValue(INVOICE_CONFIG.MY_ADDRESS).setFontSize(11);
+  ws.getRange('B7:C7').merge().setValue(employerInfo[2]).setFontSize(11);
+  ws.getRange('D7:E7').merge().setValue(INVOICE_CONFIG.MY_CITY).setFontSize(11);
+  ws.getRange('D8:E8').merge().setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
 
   // Table header row 9
   ['B9','C9','D9','E9'].forEach(ref => ws.getRange(ref).setBackground(DARK).setFontColor(NEAR_WHITE).setFontSize(13));
@@ -986,7 +984,7 @@ function generateInvoice_(key, month, employer, allRows) {
   ws.setRowHeight(dataRow + 1, 40); // 30pt — pre-footer
   dataRow++;
 
-  ws.getRange(dataRow, 2).setValue('Thank you for your trust in me!')
+  ws.getRange(dataRow, 2, 1, 4).merge().setValue('Thank you for your trust in me!')
     .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
   ws.setRowHeight(dataRow, 40); // 30.0pt
   dataRow++;
