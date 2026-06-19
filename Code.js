@@ -944,7 +944,7 @@ function generateInvoice_(key, month, employer, allRows) {
   let dataRow = 10;
   salaryRows.forEach((row, i) => {
     const bg = i % 2 === 1 ? LIGHT : null;
-    ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd').setFontSize(11);
+    ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd').setFontSize(11).setHorizontalAlignment('left');
     const planeVal = row[COL.PLANE - 1];
     ws.getRange(dataRow, 3).setValue(!planeVal || planeVal === 'None' ? '' : planeVal).setFontSize(11);
     ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0).setFontSize(11);
