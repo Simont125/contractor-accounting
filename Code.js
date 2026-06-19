@@ -1,0 +1,659 @@
+const CONFIG = {
+  SHEET_ID: '1Z627WaYnj0ZdWsjcho6sw0Jr3c5gjBWLoYHIxq0vL-4',
+
+  TIME_CARD_FOLDER_ID: '1JSqdniofDVoFZWoxbCkIy46aYrSOJ9q3',
+  EXPENSE_FOLDER_ID: '19GgJABuPeHAG8pmv1KzZs7QD_Rh-yFth',
+  PROCESSED_TIME_CARD_FOLDER_ID: '1X2B88LvvyVsYJBJCEO4d1oy-heBXxjVl',
+  PROCESSED_EXPENSE_FOLDER_ID: '1yNL1hMxAWPcO9NNsRCo04VAi2MyjGjZw',
+  REVIEW_FOLDER_ID: '10X6OghLBJQdHjvifAX4mfcVqmK15GgX2',
+
+  EMPLOYER: 'Innotech',
+  HOURLY_RATE: 65,
+  KM_PER_DAY: 132,
+  KM_RATE: 0.73,
+  REVIEW_DIFFERENCE_LIMIT: 0.50
+};
+
+const COL = {
+  EMPLOYER: 1,
+  DATE: 2,
+  PLANE: 3,
+  HOURS: 4,
+  SALARY: 5,
+  KM: 6,
+  EXPENSE: 7,
+  TPS: 8,
+  TVQ: 9,
+  TIP: 10,
+  DESCRIPTION: 11
+};
+
+function processContractorDocuments() {
+  removeSummaryRows();
+
+  processFolder(CONFIG.TIME_CARD_FOLDER_ID, 'TIME_CARD');
+  processFolder(CONFIG.EXPENSE_FOLDER_ID, 'EXPENSE');
+
+  sortSheetByDate();
+  addSummaryRows();
+}
+
+function processFolder(folderId, expectedType) {
+  const folder = DriveApp.getFolderById(folderId);
+  const files = folder.getFiles();
+
+  while (files.hasNext()) {
+    const file = files.next();
+
+    try {
+      const extraction = analyzePdfWithOpenAI(file, expectedType);
+
+      if (!extraction || extraction.needs_review) {
+        moveFile(file, CONFIG.REVIEW_FOLDER_ID);
+        continue;
+      }
+
+      normalizeExtraction(extraction);
+      validateExpenseMath(extraction);
+
+      if (extraction.needs_review) {
+        Logger.log('REVIEW: ' + file.getName() + ' - ' + extraction.review_reason);
+        moveFile(file, CONFIG.REVIEW_FOLDER_ID);
+        continue;
+      }
+
+      writeExtractionToSheet(extraction);
+
+      if (expectedType === 'TIME_CARD') {
+        moveFile(file, CONFIG.PROCESSED_TIME_CARD_FOLDER_ID);
+      } else {
+        moveFile(file, CONFIG.PROCESSED_EXPENSE_FOLDER_ID);
+      }
+
+    } catch (error) {
+      Logger.log('ERROR with file ' + file.getName() + ': ' + error);
+      moveFile(file, CONFIG.REVIEW_FOLDER_ID);
+    }
+  }
+}
+
+function analyzePdfWithOpenAI(file, expectedType) {
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return callOpenAI(file, expectedType);
+    } catch (error) {
+      lastError = error;
+      Logger.log('OpenAI attempt ' + attempt + ' failed for ' + file.getName() + ': ' + error);
+      Utilities.sleep(3000);
+    }
+  }
+
+  throw new Error('OpenAI failed after retries: ' + lastError);
+}
+
+function callOpenAI(file, expectedType) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY missing in Script Properties.');
+
+  const blob = file.getBlob();
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  const mimeType = blob.getContentType();
+
+  const payload = {
+    model: 'gpt-4.1-mini',
+    input: [
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: buildPrompt(expectedType, file.getName()) },
+          {
+            type: 'input_file',
+            filename: file.getName(),
+            file_data: `data:${mimeType};base64,${base64}`
+          }
+        ]
+      }
+    ]
+  };
+
+  const response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + apiKey },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const responseText = response.getContentText();
+
+  if (!responseText.trim().startsWith('{')) {
+    throw new Error('OpenAI returned non-JSON response: ' + responseText);
+  }
+
+  const json = JSON.parse(responseText);
+
+  let outputText = '';
+
+  if (
+    json.output &&
+    json.output.length > 0 &&
+    json.output[0].content &&
+    json.output[0].content.length > 0 &&
+    json.output[0].content[0].text
+  ) {
+    outputText = json.output[0].content[0].text;
+  }
+
+  if (!outputText) {
+    throw new Error('No text returned from OpenAI: ' + responseText);
+  }
+
+  return JSON.parse(cleanJson(outputText));
+}
+
+function buildPrompt(expectedType, fileName) {
+  return `
+You are an extraction engine for contractor accounting documents.
+
+Expected document type: ${expectedType}
+File name: ${fileName}
+
+Return ONLY valid JSON. No markdown. No explanation.
+
+GENERAL RULES:
+- Employer is "${CONFIG.EMPLOYER}" unless another employer/client is clearly written.
+- Hourly rate is ${CONFIG.HOURLY_RATE}.
+- For Innotech time cards, mileage is ${CONFIG.KM_PER_DAY} km per worked DATE.
+- Mileage rate is ${CONFIG.KM_RATE}.
+- Mileage amount per worked DATE is ${(CONFIG.KM_PER_DAY * CONFIG.KM_RATE).toFixed(2)}.
+- Each date on a time card must be its own final entry.
+- If multiple work blocks exist on the same date, MERGE them into one entry.
+- Use ONLY the numbers written in the R.T. / HOURS column as worked hours.
+- Do NOT calculate hours from handwritten start/end times unless R.T. is missing.
+- Do NOT add W.O. numbers.
+- Ignore job descriptions on time cards.
+- Extract aircraft registration if visible.
+- Be very careful distinguishing "9H" from "C" or "G".
+- Malta aircraft registrations start with "9H-", for example "9H-VTD".
+- Canadian aircraft registrations start with "C-", for example "C-GJDR".
+- USA aircraft registrations start with "N", for example "N123AB".
+- Never output impossible aircraft format like "C14-VTD".
+- If you see something like "9H VTD", output "9H-VTD".
+- If no aircraft registration is visible, plane must be "".
+
+TIME CARD output:
+{
+  "document_type": "TIME_CARD",
+  "confidence": 0.95,
+  "time_card": {
+    "employer": "",
+    "raw_time_blocks": [
+      {
+        "date": "YYYY-MM-DD",
+        "plane": "",
+        "rt_hours": 0
+      }
+    ]
+  },
+  "expense": null,
+  "needs_review": false,
+  "review_reason": ""
+}
+
+TIME CARD RULES:
+- Return raw_time_blocks only.
+- Each visible R.T. / HOURS value must become one raw_time_blocks item.
+- Do NOT add hours yourself.
+- Do NOT merge dates yourself.
+- Do NOT calculate final daily totals.
+- The script will calculate totals later.
+- Ignore handwritten start/end times like 8:15 -> 14:00.
+- Ignore W.O. numbers.
+- rt_hours must only be the number written inside the R.T. / HOURS column.
+
+EXPENSE output:
+{
+  "document_type": "EXPENSE",
+  "confidence": 0.95,
+  "time_card": null,
+  "expense": {
+    "employer": "${CONFIG.EMPLOYER}",
+    "date": "YYYY-MM-DD",
+    "expense": 0,
+    "tps": 0,
+    "tvq": 0,
+    "tip": 0,
+    "total": 0,
+    "description": ""
+  },
+  "needs_review": false,
+  "review_reason": ""
+}
+
+EXPENSE RULES:
+- expense = amount before taxes.
+- TPS/GST goes in tps.
+- TVQ/QST goes in tvq.
+- tip goes in tip.
+- total = final amount paid on the receipt.
+- Copy money values exactly as written.
+- Preserve 2 decimal places when visible.
+- Never round money values yourself.
+- description must be SHORT, 2 to 5 words maximum.
+- Examples of good descriptions:
+  - "Jumbo"
+  - "Amir"
+  - "Delibee"
+  - "garderie bumbu"
+  - "Tim Hortons"
+  - "training food"
+- Do NOT include long legal names, explanations, or file names.
+- If a value is not visible, use 0.
+- If date, total, or main amount is unclear, set needs_review true.
+`;
+}
+
+function normalizeExtraction(data) {
+  if (data.document_type === 'TIME_CARD' && data.time_card) {
+    const rawBlocks = data.time_card.raw_time_blocks || data.time_card.entries || [];
+    const grouped = {};
+
+    rawBlocks.forEach(block => {
+      const dateKey = normalizeDateKey(block.date);
+      const plane = normalizePlane(block.plane || '');
+      const hours = round2(block.rt_hours || block.hours || 0);
+
+      if (!dateKey || !hours) return;
+
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = {
+          date: dateKey,
+          plane: '',
+          hours: 0,
+          salary: 0,
+          kilometrage: 0
+        };
+      }
+
+      grouped[dateKey].hours = round2(grouped[dateKey].hours + hours);
+      grouped[dateKey].plane = mergeText(grouped[dateKey].plane, plane);
+    });
+
+    data.time_card.entries = Object.keys(grouped).map(dateKey => {
+      const entry = grouped[dateKey];
+      entry.salary = round2(entry.hours * CONFIG.HOURLY_RATE);
+      entry.kilometrage = round2(CONFIG.KM_PER_DAY * CONFIG.KM_RATE);
+      return entry;
+    });
+  }
+
+  if (data.document_type === 'EXPENSE' && data.expense) {
+    data.expense.date = normalizeDateKey(data.expense.date);
+    data.expense.expense = round2(data.expense.expense || 0);
+    data.expense.tps = round2(data.expense.tps || 0);
+    data.expense.tvq = round2(data.expense.tvq || 0);
+    data.expense.tip = round2(data.expense.tip || 0);
+    data.expense.total = round2(data.expense.total || 0);
+    data.expense.description = shortenDescription(data.expense.description || '');
+  }
+}
+
+function validateExpenseMath(data) {
+  if (data.document_type !== 'EXPENSE' || !data.expense) return data;
+
+  const expense = data.expense;
+
+  const subtotal = Number(expense.expense) || 0;
+  const tps = Number(expense.tps) || 0;
+  const tvq = Number(expense.tvq) || 0;
+  const tip = Number(expense.tip) || 0;
+  const total = Number(expense.total) || 0;
+
+  if (!total) return data;
+
+  const calculatedWithTip = round2(subtotal + tps + tvq + tip);
+  const calculatedWithoutTip = round2(subtotal + tps + tvq);
+
+  const diffWithTip = Math.abs(round2(calculatedWithTip - total));
+  const diffWithoutTip = Math.abs(round2(calculatedWithoutTip - total));
+
+  // If the receipt total seems to be before tip, accept it.
+  // Example: total read = 24.01, but subtotal+tax+tip = 26.83.
+  // This means total probably excludes tip or tip was handled separately.
+  if (diffWithoutTip < CONFIG.REVIEW_DIFFERENCE_LIMIT) {
+    return data;
+  }
+
+  // If total including tip balances, accept it.
+  if (diffWithTip < CONFIG.REVIEW_DIFFERENCE_LIMIT) {
+    return data;
+  }
+
+  data.needs_review = true;
+  data.review_reason =
+    'Expense math mismatch. Without tip: ' +
+    calculatedWithoutTip +
+    ', with tip: ' +
+    calculatedWithTip +
+    ', receipt total: ' +
+    total +
+    '. Difference with tip: ' +
+    diffWithTip +
+    ', difference without tip: ' +
+    diffWithoutTip;
+
+  return data;
+}
+
+function writeExtractionToSheet(data) {
+  if (data.document_type === 'TIME_CARD') {
+    data.time_card.entries.forEach(entry => {
+      upsertRowByDate({
+        employer: data.time_card.employer || CONFIG.EMPLOYER,
+        date: entry.date,
+        plane: entry.plane,
+        hours: entry.hours,
+        salary: entry.salary,
+        km: entry.kilometrage
+      });
+    });
+  }
+
+  if (data.document_type === 'EXPENSE') {
+    const expense = data.expense;
+
+    upsertRowByDate({
+      employer: expense.employer || CONFIG.EMPLOYER,
+      date: expense.date,
+      expense: expense.expense,
+      tps: expense.tps,
+      tvq: expense.tvq,
+      tip: expense.tip,
+      description: expense.description
+    });
+  }
+}
+
+function upsertRowByDate(data) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const rowNumber = findRowByDate(data.date);
+
+  if (rowNumber) {
+    mergeIntoExistingRow(sheet, rowNumber, data);
+  } else {
+    appendNewRow(sheet, data);
+  }
+}
+
+function findRowByDate(dateValue) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) return null;
+
+  const target = normalizeDateKey(dateValue);
+  const values = sheet.getRange(2, COL.DATE, lastRow - 1, 1).getValues();
+
+  for (let i = 0; i < values.length; i++) {
+    const existing = values[i][0];
+
+    if (isSummaryLabel(existing)) continue;
+
+    if (normalizeDateKey(existing) === target) {
+      return i + 2;
+    }
+  }
+
+  return null;
+}
+
+function appendNewRow(sheet, data) {
+  sheet.appendRow([
+    data.employer || CONFIG.EMPLOYER,
+    data.date || '',
+    data.plane || '',
+    data.hours || '',
+    data.salary || '',
+    data.km || '',
+    data.expense || '',
+    data.tps || '',
+    data.tvq || '',
+    data.tip || '',
+    data.description || ''
+  ]);
+}
+
+function mergeIntoExistingRow(sheet, row, data) {
+  if (data.employer) sheet.getRange(row, COL.EMPLOYER).setValue(data.employer);
+
+  if (data.plane) {
+    const oldPlane = sheet.getRange(row, COL.PLANE).getValue();
+    sheet.getRange(row, COL.PLANE).setValue(mergeText(oldPlane, data.plane));
+  }
+
+  if (data.hours !== undefined && data.hours !== null && data.hours !== '') {
+    sheet.getRange(row, COL.HOURS).setValue(round2(Number(data.hours)));
+  }
+
+  if (data.salary !== undefined && data.salary !== null && data.salary !== '') {
+    sheet.getRange(row, COL.SALARY).setValue(round2(Number(data.salary)));
+  }
+
+  if (data.km !== undefined && data.km !== null && data.km !== '') {
+    sheet.getRange(row, COL.KM).setValue(round2(Number(data.km)));
+  }
+
+  addNumber(sheet, row, COL.EXPENSE, data.expense);
+  addNumber(sheet, row, COL.TPS, data.tps);
+  addNumber(sheet, row, COL.TVQ, data.tvq);
+  addNumber(sheet, row, COL.TIP, data.tip);
+
+  if (data.description) {
+    const oldDescription = sheet.getRange(row, COL.DESCRIPTION).getValue();
+    sheet.getRange(row, COL.DESCRIPTION).setValue(mergeText(oldDescription, data.description));
+  }
+}
+
+function addNumber(sheet, row, col, value) {
+  if (value === undefined || value === null || value === '') return;
+
+  const oldValue = Number(sheet.getRange(row, col).getValue()) || 0;
+  sheet.getRange(row, col).setValue(round2(oldValue + Number(value)));
+}
+
+function sortSheetByDate() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  removeSummaryRows();
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 2) return;
+
+  sheet
+    .getRange(2, 1, lastRow - 1, sheet.getLastColumn())
+    .sort({ column: COL.DATE, ascending: true });
+}
+
+function addSummaryRows() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  removeSummaryRows();
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const brutRow = lastRow + 2;
+  const netRow = lastRow + 3;
+
+  sheet.getRange(brutRow, COL.DATE).setValue('Brut');
+  sheet.getRange(netRow, COL.DATE).setValue('Net');
+
+  const totalCols = [
+    COL.HOURS,
+    COL.SALARY,
+    COL.KM,
+    COL.EXPENSE,
+    COL.TPS,
+    COL.TVQ,
+    COL.TIP
+  ];
+
+  totalCols.forEach(col => {
+    const letter = columnToLetter(col);
+    sheet.getRange(brutRow, col).setFormula(`=SUM(${letter}2:${letter}${lastRow})`);
+  });
+
+  sheet.getRange(netRow, COL.SALARY).setFormula(
+    `=${columnToLetter(COL.SALARY)}${brutRow}-${columnToLetter(COL.KM)}${brutRow}-${columnToLetter(COL.EXPENSE)}${brutRow}`
+  );
+
+  sheet.getRange(brutRow, 1, 2, sheet.getLastColumn()).setFontWeight('bold');
+}
+
+function removeSummaryRows() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) return;
+
+  const values = sheet.getRange(2, COL.DATE, lastRow - 1, 1).getValues();
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (isSummaryLabel(values[i][0])) {
+      sheet.deleteRow(i + 2);
+    }
+  }
+}
+
+function isSummaryLabel(value) {
+  const v = String(value || '').trim().toUpperCase();
+  return v === 'TOTAL' || v === 'BRUT' || v === 'NET';
+}
+
+function normalizeDateKey(value) {
+  if (!value) return '';
+
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  const s = String(value).trim();
+
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return s;
+
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  return s;
+}
+
+function normalizePlane(plane) {
+  let p = String(plane).trim().toUpperCase();
+
+  if (!p) return '';
+
+  p = p.replace(/\s+/g, '-');
+
+  if (p === 'C14-VTD' || p === 'C1H-VTD' || p === 'C9H-VTD') {
+    return '9H-VTD';
+  }
+
+  const canadian = p.match(/^C-[A-Z0-9]{4}$/);
+  if (canadian) return p;
+
+  const malta = p.match(/^9H-[A-Z0-9]{3,4}$/);
+  if (malta) return p;
+
+  const usa = p.match(/^N[0-9A-Z]{3,5}$/);
+  if (usa) return p;
+
+  return p;
+}
+
+function shortenDescription(text) {
+  if (!text) return '';
+
+  let t = String(text).trim();
+
+  t = t.replace(/restaurant/ig, '');
+  t = t.replace(/food expense/ig, '');
+  t = t.replace(/meal expense/ig, '');
+  t = t.replace(/purchase/ig, '');
+  t = t.replace(/services/ig, '');
+  t = t.replace(/reservation.*$/ig, '');
+  t = t.replace(/\s+/g, ' ').trim();
+
+  if (t.length > 35) {
+    t = t.substring(0, 35).trim();
+  }
+
+  return t;
+}
+
+function mergeText(oldText, newText) {
+  if (!oldText) return newText;
+  if (!newText) return oldText;
+
+  const oldStr = String(oldText);
+  const newStr = String(newText);
+
+  if (oldStr.includes(newStr)) return oldStr;
+
+  return oldStr + ' / ' + newStr;
+}
+
+function moveFile(file, destinationFolderId) {
+  const destination = DriveApp.getFolderById(destinationFolderId);
+  file.moveTo(destination);
+}
+
+function cleanJson(text) {
+  return text
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+function round2(num) {
+  return Math.round((Number(num) + Number.EPSILON) * 100) / 100;
+}
+
+function columnToLetter(column) {
+  let temp;
+  let letter = '';
+
+  while (column > 0) {
+    temp = (column - 1) % 26;
+    letter = String.fromCharCode(temp + 65) + letter;
+    column = (column - temp - 1) / 26;
+  }
+
+  return letter;
+}
+
+function debugOneTimeCard() {
+  const folder = DriveApp.getFolderById(CONFIG.TIME_CARD_FOLDER_ID);
+  const files = folder.getFiles();
+
+  if (!files.hasNext()) {
+    Logger.log('Aucun fichier dans Time Cards à traiter.');
+    return;
+  }
+
+  const file = files.next();
+
+  Logger.log('Testing file: ' + file.getName());
+
+  const extraction = analyzePdfWithOpenAI(file, 'TIME_CARD');
+
+  Logger.log('BEFORE NORMALIZE:');
+  Logger.log(JSON.stringify(extraction, null, 2));
+
+  normalizeExtraction(extraction);
+
+  Logger.log('AFTER NORMALIZE:');
+  Logger.log(JSON.stringify(extraction, null, 2));
+}
