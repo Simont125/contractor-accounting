@@ -43,8 +43,112 @@ function processContractorDocuments() {
   processFolder(CONFIG.TIME_CARD_FOLDER_ID, 'TIME_CARD');
   processFolder(CONFIG.EXPENSE_FOLDER_ID, 'EXPENSE');
 
-  sortSheetByDate();
-  addSummaryRows();
+  rebuildSheet();
+}
+
+function rebuildSheet() {
+  const sheet = getSheet_();
+  removeSummaryRows();
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const numCols = COL.DESCRIPTION;
+  const rawData = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+  const dataRows = rawData.filter(row => {
+    const d = row[COL.DATE - 1];
+    return d && !isSummaryLabel(d);
+  });
+
+  if (dataRows.length === 0) return;
+
+  dataRows.sort((a, b) => {
+    const da = new Date(normalizeDateKey(a[COL.DATE - 1]));
+    const db = new Date(normalizeDateKey(b[COL.DATE - 1]));
+    return da - db;
+  });
+
+  const monthMap = {};
+  const monthOrder = [];
+  dataRows.forEach(row => {
+    const dateStr = normalizeDateKey(row[COL.DATE - 1]);
+    if (!dateStr || dateStr.length < 7) return;
+    const month = dateStr.substring(0, 7);
+    if (!monthMap[month]) {
+      monthMap[month] = [];
+      monthOrder.push(month);
+    }
+    monthMap[month].push(row);
+  });
+
+  let nextRow = 2;
+  const monthMeta = monthOrder.map(month => {
+    const rows = monthMap[month];
+    const startRow = nextRow;
+    nextRow += rows.length;
+    const brutRowNum = nextRow;
+    nextRow += 2;
+    nextRow++;
+    return { month, rows, startRow, endRow: startRow + rows.length - 1, brutRowNum };
+  });
+
+  const output = [];
+  const boldRows = [];
+
+  monthMeta.forEach(({ month, rows, startRow, endRow, brutRowNum }) => {
+    const facture = getFactureForMonth_(month);
+
+    rows.forEach((row, i) => {
+      const newRow = row.slice(0, numCols);
+      if (i === 0) {
+        newRow[COL.EMPLOYER - 1] = row[COL.EMPLOYER - 1] || CONFIG.EMPLOYER;
+      } else if (i === rows.length - 1 && rows.length > 1) {
+        newRow[COL.EMPLOYER - 1] = facture;
+      } else {
+        newRow[COL.EMPLOYER - 1] = '';
+      }
+      output.push(newRow);
+    });
+
+    const bRow = new Array(numCols).fill('');
+    bRow[COL.DATE - 1] = 'Brut';
+    [COL.HOURS, COL.SALARY, COL.KM, COL.EXPENSE, COL.TPS, COL.TVQ, COL.TIP].forEach(col => {
+      bRow[col - 1] = `=SUM(${columnToLetter(col)}${startRow}:${columnToLetter(col)}${endRow})`;
+    });
+    output.push(bRow);
+    boldRows.push(output.length);
+
+    const nRow = new Array(numCols).fill('');
+    nRow[COL.DATE - 1] = 'Net';
+    nRow[COL.SALARY - 1] = `=${columnToLetter(COL.SALARY)}${brutRowNum}-${columnToLetter(COL.KM)}${brutRowNum}-${columnToLetter(COL.EXPENSE)}${brutRowNum}`;
+    output.push(nRow);
+    boldRows.push(output.length);
+
+    output.push(new Array(numCols).fill(''));
+  });
+
+  sheet.getRange(2, 1, Math.max(lastRow - 1, output.length), numCols).clearContent();
+  sheet.getRange(2, 1, output.length, numCols).setValues(output);
+
+  boldRows.forEach(relRow => {
+    sheet.getRange(1 + relRow, 1, 1, numCols).setFontWeight('bold');
+  });
+}
+
+function getFactureForMonth_(month) {
+  const props = PropertiesService.getScriptProperties();
+  const stored = props.getProperty('FACTURE_MAP');
+  const map = stored ? JSON.parse(stored) : {};
+
+  if (!map[month]) {
+    const counter = parseInt(props.getProperty('FACTURE_COUNTER') || '0') + 1;
+    map[month] = 'Facture ' + String(counter).padStart(4, '0');
+    props.setProperty('FACTURE_MAP', JSON.stringify(map));
+    props.setProperty('FACTURE_COUNTER', String(counter));
+  }
+
+  return map[month];
 }
 
 function processFolder(folderId, expectedType) {
@@ -535,7 +639,8 @@ function removeSummaryRows() {
   const values = sheet.getRange(2, COL.DATE, lastRow - 1, 1).getValues();
 
   for (let i = values.length - 1; i >= 0; i--) {
-    if (isSummaryLabel(values[i][0])) {
+    const val = values[i][0];
+    if (!val || isSummaryLabel(val)) {
       sheet.deleteRow(i + 2);
     }
   }
