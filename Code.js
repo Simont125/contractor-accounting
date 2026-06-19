@@ -789,6 +789,24 @@ function columnToLetter(column) {
   return letter;
 }
 
+function initFactureCounter() {
+  const props = PropertiesService.getScriptProperties();
+  const map = {
+    '2025-08': 'Facture 0001',
+    '2025-09': 'Facture 0001',
+    '2025-10': 'Facture 0002',
+    '2025-11': 'Facture 0003',
+    '2025-12': 'Facture 0005',
+    '2026-02': 'Facture 0006',
+    '2026-03': 'Facture 0007',
+    '2026-04': 'Facture 0008',
+    '2026-05': 'Facture 0009'
+  };
+  props.setProperty('FACTURE_MAP', JSON.stringify(map));
+  props.setProperty('FACTURE_COUNTER', '9');
+  Logger.log('Facture counter initialisé à 9. Prochain: Facture 0010 (juin 2026).');
+}
+
 function debugOneTimeCard() {
   const folder = DriveApp.getFolderById(CONFIG.TIME_CARD_FOLDER_ID);
   const files = folder.getFiles();
