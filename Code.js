@@ -929,7 +929,24 @@ function generateInvoice_(key, month, employer, allRows) {
   ws.getRange('D6:E6').merge().setValue(INVOICE_CONFIG.MY_ADDRESS).setFontSize(11);
   ws.getRange('B7:C7').merge().setValue(employerInfo[2]).setFontSize(11);
   ws.getRange('D7:E7').merge().setValue(INVOICE_CONFIG.MY_CITY).setFontSize(11);
+  ws.getRange('B8:C8').merge();  // keep left side merged (empty, matches template)
   ws.getRange('D8:E8').merge().setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
+
+  // Add borders to header block (rows 1-8) to visually unify each side into one block
+  // Left+top+bottom on each merged cell, matching original template border style
+  const setBorder = (range) => range.setBorder(true, true, true, false, false, false);
+  setBorder(ws.getRange('B1:C1'));
+  setBorder(ws.getRange('B2:C2'));
+  setBorder(ws.getRange('B3:C3'));
+  setBorder(ws.getRange('D1:E1'));
+  setBorder(ws.getRange('D2:E2'));
+  setBorder(ws.getRange('D3:E3'));
+  setBorder(ws.getRange('B4:C4'));
+  setBorder(ws.getRange('B5:C5'));
+  setBorder(ws.getRange('B6:C6'));
+  setBorder(ws.getRange('B7:C7'));
+  setBorder(ws.getRange('B8:C8'));
+  setBorder(ws.getRange('D4:E4'));
 
   // Table header row 9
   ['B9','C9','D9','E9'].forEach(ref => ws.getRange(ref).setBackground(DARK).setFontColor(NEAR_WHITE).setFontSize(13));
