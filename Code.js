@@ -881,77 +881,94 @@ function generateInvoice_(key, month, employer, allRows) {
   const ss = SpreadsheetApp.create(fileName);
   const ws = ss.getActiveSheet();
 
-  ws.setColumnWidth(1, 20);
-  ws.setColumnWidth(2, 180);
-  ws.setColumnWidth(3, 110);
-  ws.setColumnWidth(4, 200);
-  ws.setColumnWidth(5, 110);
+  // Column widths matching original (Excel chars × 7 ≈ px)
+  ws.setColumnWidth(1, 18);   // A - left margin
+  ws.setColumnWidth(2, 216);  // B - main label
+  ws.setColumnWidth(3, 166);  // C - plane
+  ws.setColumnWidth(4, 76);   // D - hours / invoice info
+  ws.setColumnWidth(5, 211);  // E - amount
+  ws.setColumnWidth(6, 18);   // F - right margin
 
-  // Header
-  ws.getRange('B1').setValue(INVOICE_CONFIG.MY_NAME).setFontWeight('bold').setBackground(LIGHT);
+  const NEAR_WHITE = '#F0F0F0';
+  const BLUE_TEXT  = '#166982';
+
+  // Row 1 — Name | Invoice
+  ws.getRange('B1').setValue(INVOICE_CONFIG.MY_NAME)
+    .setBackground(LIGHT).setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(24);
   ws.getRange('C1').setBackground(LIGHT);
-  ws.getRange('D1').setValue('Invoice').setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('D1').setValue('Invoice')
+    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(18);
   ws.getRange('E1').setBackground(DARK);
 
-  ws.getRange('B2').setValue(INVOICE_CONFIG.MY_EMAIL).setBackground(LIGHT);
+  // Row 2 — Email | Invoice Number
+  ws.getRange('B2').setValue(INVOICE_CONFIG.MY_EMAIL)
+    .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
   ws.getRange('C2').setBackground(LIGHT);
-  ws.getRange('D2').setValue('Invoice Number :     ' + invoiceNumber).setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('D2').setValue('Invoice Number :     ' + invoiceNumber)
+    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
   ws.getRange('E2').setBackground(DARK);
 
-  ws.getRange('B3').setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE).setBackground(LIGHT);
+  // Row 3 — Phone | Date
+  ws.getRange('B3').setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE)
+    .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
   ws.getRange('C3').setBackground(LIGHT);
-  ws.getRange('D3').setValue('Date of invoice :       ' + invoiceDate).setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('D3').setValue('Date of invoice :       ' + invoiceDate)
+    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
   ws.getRange('E3').setBackground(DARK);
 
   // Addresses
-  ws.getRange('B4').setValue('Invoice to :').setFontWeight('bold');
-  ws.getRange('D4').setValue('Send at :').setFontWeight('bold');
-  ws.getRange('B5').setValue(employerInfo[0]);
-  ws.getRange('D5').setValue(INVOICE_CONFIG.MY_NAME);
-  ws.getRange('B6').setValue(employerInfo[1]);
-  ws.getRange('D6').setValue(INVOICE_CONFIG.MY_ADDRESS);
-  ws.getRange('B7').setValue(employerInfo[2]);
-  ws.getRange('D7').setValue(INVOICE_CONFIG.MY_CITY);
-  ws.getRange('D8').setValue(INVOICE_CONFIG.MY_PAYMENT);
+  ws.getRange('B4').setValue('Invoice to :').setFontWeight('bold').setFontSize(11);
+  ws.getRange('D4').setValue('Send at :').setFontWeight('bold').setFontSize(11);
+  ws.getRange('B5').setValue(employerInfo[0]).setFontSize(11);
+  ws.getRange('D5').setValue(INVOICE_CONFIG.MY_NAME).setFontSize(11);
+  ws.getRange('B6').setValue(employerInfo[1]).setFontSize(11);
+  ws.getRange('D6').setValue(INVOICE_CONFIG.MY_ADDRESS).setFontSize(11);
+  ws.getRange('B7').setValue(employerInfo[2]).setFontSize(11);
+  ws.getRange('D7').setValue(INVOICE_CONFIG.MY_CITY).setFontSize(11);
+  ws.getRange('D8').setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
 
-  // Table header
-  ws.getRange('B9').setValue('Date').setBackground(DARK).setFontColor(WHITE);
-  ws.getRange('C9').setValue('Plane').setBackground(DARK).setFontColor(WHITE);
-  ws.getRange('D9').setValue('Hours').setBackground(DARK).setFontColor(WHITE);
-  ws.getRange('E9').setValue('AMOUNT').setBackground(DARK).setFontColor(WHITE);
+  // Table header row 9
+  ['B9','C9','D9','E9'].forEach(ref => ws.getRange(ref).setBackground(DARK).setFontColor(NEAR_WHITE).setFontSize(13));
+  ws.getRange('B9').setValue('Date');
+  ws.getRange('C9').setValue('Plane');
+  ws.getRange('D9').setValue('Hours');
+  ws.getRange('E9').setValue('AMOUNT');
 
   // Data rows
   let dataRow = 10;
   salaryRows.forEach((row, i) => {
     const bg = i % 2 === 1 ? LIGHT : null;
-    ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd');
-    ws.getRange(dataRow, 3).setValue(row[COL.PLANE - 1] || '');
-    ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0);
-    ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00');
+    ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd').setFontSize(11);
+    ws.getRange(dataRow, 3).setValue(row[COL.PLANE - 1] || '').setFontSize(11);
+    ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0).setFontSize(11);
+    ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00').setFontSize(11);
     if (bg) ws.getRange(dataRow, 2, 1, 4).setBackground(bg);
     dataRow++;
   });
 
   // Totals (3 blank rows gap)
   dataRow += 3;
-  ws.getRange(dataRow, 2).setValue('TPS (' + INVOICE_CONFIG.TPS_NUMBER + ')');
-  ws.getRange(dataRow, 5).setValue(tps).setNumberFormat('#,##0.00');
+  ws.getRange(dataRow, 2).setValue('TVQ (' + INVOICE_CONFIG.TVQ_NUMBER + ')').setFontSize(11).setBackground(LIGHT);
+  ws.getRange(dataRow, 5).setValue(tvq).setNumberFormat('#,##0.00').setFontSize(11).setBackground(LIGHT);
   dataRow++;
 
-  ws.getRange(dataRow, 2).setValue('TVQ (' + INVOICE_CONFIG.TVQ_NUMBER + ')').setBackground(LIGHT);
-  ws.getRange(dataRow, 5).setValue(tvq).setNumberFormat('#,##0.00').setBackground(LIGHT);
+  ws.getRange(dataRow, 2).setValue('TPS (' + INVOICE_CONFIG.TPS_NUMBER + ')').setFontSize(11);
+  ws.getRange(dataRow, 5).setValue(tps).setNumberFormat('#,##0.00').setFontSize(11);
   dataRow++;
 
-  ws.getRange(dataRow, 2).setValue('EXPEDITION FEES');
+  ws.getRange(dataRow, 2).setValue('EXPEDITION FEES').setFontSize(11);
+  ws.getRange(dataRow, 5).setValue('').setFontSize(11);
   dataRow++;
 
-  ws.getRange(dataRow, 2).setValue('TOTAL').setFontWeight('bold');
-  ws.getRange(dataRow, 5).setValue(total).setNumberFormat('#,##0.00').setFontWeight('bold');
+  ws.getRange(dataRow, 2).setValue('TOTAL').setFontWeight('bold').setFontSize(11);
+  ws.getRange(dataRow, 5).setValue(total).setNumberFormat('#,##0.00').setFontWeight('bold').setFontSize(11);
   dataRow += 2;
 
-  ws.getRange(dataRow, 2).setValue('Thank you for your trust in me!').setFontWeight('bold');
+  ws.getRange(dataRow, 2).setValue('Thank you for your trust in me!')
+    .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
   dataRow++;
-  ws.getRange(dataRow, 2).setValue(INVOICE_CONFIG.SIGN_OFF).setFontWeight('bold');
+  ws.getRange(dataRow, 2).setValue(INVOICE_CONFIG.SIGN_OFF)
+    .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
 
   // Export as XLSX via Sheets export URL
   SpreadsheetApp.flush();
@@ -1042,3 +1059,4 @@ function debugOneExpense() {
 
   // File is NOT moved — debug only
 }
+
