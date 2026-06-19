@@ -6,12 +6,28 @@ const CONFIG = {
   PROCESSED_TIME_CARD_FOLDER_ID: '1X2B88LvvyVsYJBJCEO4d1oy-heBXxjVl',
   PROCESSED_EXPENSE_FOLDER_ID: '1yNL1hMxAWPcO9NNsRCo04VAi2MyjGjZw',
   REVIEW_FOLDER_ID: '10X6OghLBJQdHjvifAX4mfcVqmK15GgX2',
+  INVOICE_FOLDER_ID: '1Lf3uKKyCstKGXV_wU136kGMoNAdndftP',
 
   EMPLOYER: 'Innotech',
   HOURLY_RATE: 65,
   KM_PER_DAY: 132,
   KM_RATE: 0.73,
   REVIEW_DIFFERENCE_LIMIT: 0.50
+};
+
+const INVOICE_CONFIG = {
+  MY_NAME:    'Simon Tremblay',
+  MY_EMAIL:   'sims_tremblay@hotmail.com',
+  MY_PHONE:   '+1(514) 817-9103',
+  MY_ADDRESS: '843 rue Nadar, Saint-Jean-sur-Richelieu',
+  MY_CITY:    'QC, Canada, J3B OE7',
+  MY_PAYMENT: 'by direct deposit',
+  TPS_NUMBER: '744633553 RT0001',
+  TVQ_NUMBER: '4002578340 TQ0001',
+  SIGN_OFF:   'Execaire sign-off : ___________________________',
+  EMPLOYERS: {
+    'Innotech': ['Innotech Aviation', '10225 RYAN AVENUE', 'DORVAL-QUEBEC H9P-1A2']
+  }
 };
 
 // Cached sheet reference — reused across all functions within one execution
@@ -790,6 +806,178 @@ function columnToLetter(column) {
   }
 
   return letter;
+}
+
+function generateAllInvoices() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const numCols = COL.DESCRIPTION;
+  const rawData = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+  const groupMap = {};
+  const groupOrder = [];
+  let currentEmployer = CONFIG.EMPLOYER;
+
+  rawData.forEach(row => {
+    const dateVal = row[COL.DATE - 1];
+    if (!dateVal || isSummaryLabel(dateVal)) return;
+    const dateStr = normalizeDateKey(dateVal);
+    if (!dateStr || dateStr.length < 7) return;
+
+    const month = dateStr.substring(0, 7);
+    const employerCell = (row[COL.EMPLOYER - 1] || '').toString().trim();
+    if (employerCell && !employerCell.startsWith('Facture')) {
+      currentEmployer = employerCell;
+    }
+
+    const key = month + '|' + currentEmployer;
+    if (!groupMap[key]) {
+      groupMap[key] = { month, employer: currentEmployer, rows: [] };
+      groupOrder.push(key);
+    }
+    groupMap[key].rows.push(row);
+  });
+
+  groupOrder.forEach(key => {
+    const { month, employer, rows } = groupMap[key];
+    const salaryRows = rows.filter(r => (r[COL.HOURS - 1] || 0) > 0);
+    if (salaryRows.length === 0) return;
+    if (hasInvoiceBeenGenerated_(key)) {
+      Logger.log('Facture déjà générée pour ' + key);
+      return;
+    }
+    generateInvoice_(key, month, employer, rows);
+  });
+}
+
+function generateInvoice_(key, month, employer, allRows) {
+  const factureLabel = getFactureForMonth_(key);
+  const factureNum = factureLabel.replace('Facture ', '');
+  const year = month.substring(0, 4);
+  const monthNum = parseInt(month.substring(5, 7));
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthShort = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const monthName = monthNames[monthNum - 1];
+  const lastDay = new Date(parseInt(year), monthNum, 0).getDate();
+  const invoiceNumber = year + '-' + factureNum;
+  const invoiceDate = lastDay + '-' + monthShort[monthNum - 1] + '-' + year;
+  const fileName = 'Invoice ' + factureNum + ' - ' + monthName + ' ' + year + ' - ' + INVOICE_CONFIG.MY_NAME;
+
+  const salaryRows = allRows.filter(r => (r[COL.HOURS - 1] || 0) > 0);
+  if (salaryRows.length === 0) return;
+
+  const subtotal = round2(salaryRows.reduce((s, r) => s + (r[COL.SALARY - 1] || 0), 0));
+  const tps = round2(subtotal * 0.05);
+  const tvq = round2(subtotal * 0.09975);
+  const total = round2(subtotal + tps + tvq);
+
+  const employerInfo = INVOICE_CONFIG.EMPLOYERS[employer] || [employer, '', ''];
+  const DARK  = '#166982';
+  const LIGHT = '#DCF2F8';
+  const WHITE = '#FFFFFF';
+
+  const ss = SpreadsheetApp.create(fileName);
+  const ws = ss.getActiveSheet();
+
+  ws.setColumnWidth(1, 20);
+  ws.setColumnWidth(2, 180);
+  ws.setColumnWidth(3, 110);
+  ws.setColumnWidth(4, 200);
+  ws.setColumnWidth(5, 110);
+
+  // Header
+  ws.getRange('B1').setValue(INVOICE_CONFIG.MY_NAME).setFontWeight('bold').setBackground(LIGHT);
+  ws.getRange('C1').setBackground(LIGHT);
+  ws.getRange('D1').setValue('Invoice').setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('E1').setBackground(DARK);
+
+  ws.getRange('B2').setValue(INVOICE_CONFIG.MY_EMAIL).setBackground(LIGHT);
+  ws.getRange('C2').setBackground(LIGHT);
+  ws.getRange('D2').setValue('Invoice Number :     ' + invoiceNumber).setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('E2').setBackground(DARK);
+
+  ws.getRange('B3').setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE).setBackground(LIGHT);
+  ws.getRange('C3').setBackground(LIGHT);
+  ws.getRange('D3').setValue('Date of invoice :       ' + invoiceDate).setFontWeight('bold').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('E3').setBackground(DARK);
+
+  // Addresses
+  ws.getRange('B4').setValue('Invoice to :').setFontWeight('bold');
+  ws.getRange('D4').setValue('Send at :').setFontWeight('bold');
+  ws.getRange('B5').setValue(employerInfo[0]);
+  ws.getRange('D5').setValue(INVOICE_CONFIG.MY_NAME);
+  ws.getRange('B6').setValue(employerInfo[1]);
+  ws.getRange('D6').setValue(INVOICE_CONFIG.MY_ADDRESS);
+  ws.getRange('B7').setValue(employerInfo[2]);
+  ws.getRange('D7').setValue(INVOICE_CONFIG.MY_CITY);
+  ws.getRange('D8').setValue(INVOICE_CONFIG.MY_PAYMENT);
+
+  // Table header
+  ws.getRange('B9').setValue('Date').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('C9').setValue('Plane').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('D9').setValue('Hours').setBackground(DARK).setFontColor(WHITE);
+  ws.getRange('E9').setValue('AMOUNT').setBackground(DARK).setFontColor(WHITE);
+
+  // Data rows
+  let dataRow = 10;
+  salaryRows.forEach((row, i) => {
+    const bg = i % 2 === 1 ? LIGHT : null;
+    ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd');
+    ws.getRange(dataRow, 3).setValue(row[COL.PLANE - 1] || '');
+    ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0);
+    ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00');
+    if (bg) ws.getRange(dataRow, 2, 1, 4).setBackground(bg);
+    dataRow++;
+  });
+
+  // Totals (3 blank rows gap)
+  dataRow += 3;
+  ws.getRange(dataRow, 2).setValue('TPS (' + INVOICE_CONFIG.TPS_NUMBER + ')');
+  ws.getRange(dataRow, 5).setValue(tps).setNumberFormat('#,##0.00');
+  dataRow++;
+
+  ws.getRange(dataRow, 2).setValue('TVQ (' + INVOICE_CONFIG.TVQ_NUMBER + ')').setBackground(LIGHT);
+  ws.getRange(dataRow, 5).setValue(tvq).setNumberFormat('#,##0.00').setBackground(LIGHT);
+  dataRow++;
+
+  ws.getRange(dataRow, 2).setValue('EXPEDITION FEES');
+  dataRow++;
+
+  ws.getRange(dataRow, 2).setValue('TOTAL').setFontWeight('bold');
+  ws.getRange(dataRow, 5).setValue(total).setNumberFormat('#,##0.00').setFontWeight('bold');
+  dataRow += 2;
+
+  ws.getRange(dataRow, 2).setValue('Thank you for your trust in me!').setFontWeight('bold');
+  dataRow++;
+  ws.getRange(dataRow, 2).setValue(INVOICE_CONFIG.SIGN_OFF).setFontWeight('bold');
+
+  // Export as XLSX via Sheets export URL
+  SpreadsheetApp.flush();
+  const exportUrl = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
+  const token = ScriptApp.getOAuthToken();
+  const response = UrlFetchApp.fetch(exportUrl, { headers: { Authorization: 'Bearer ' + token } });
+  const blob = response.getBlob().setName(fileName + '.xlsx');
+  const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
+  const file = folder.createFile(blob);
+  DriveApp.getFileById(ss.getId()).setTrashed(true);
+
+  markInvoiceGenerated_(key, fileName);
+  Logger.log('Facture générée : ' + fileName + ' → ' + file.getUrl());
+}
+
+function hasInvoiceBeenGenerated_(key) {
+  const props = PropertiesService.getScriptProperties();
+  const generated = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  return !!generated[key];
+}
+
+function markInvoiceGenerated_(key, fileName) {
+  const props = PropertiesService.getScriptProperties();
+  const generated = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  generated[key] = fileName;
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(generated));
 }
 
 function initFactureCounter() {
