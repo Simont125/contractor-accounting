@@ -939,7 +939,8 @@ function generateInvoice_(key, month, employer, allRows) {
   salaryRows.forEach((row, i) => {
     const bg = i % 2 === 1 ? LIGHT : null;
     ws.getRange(dataRow, 2).setValue(row[COL.DATE - 1]).setNumberFormat('yyyy-mm-dd').setFontSize(11);
-    ws.getRange(dataRow, 3).setValue(row[COL.PLANE - 1] || '').setFontSize(11);
+    const planeVal = row[COL.PLANE - 1];
+    ws.getRange(dataRow, 3).setValue(!planeVal || planeVal === 'None' ? '' : planeVal).setFontSize(11);
     ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0).setFontSize(11);
     ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00').setFontSize(11);
     if (bg) ws.getRange(dataRow, 2, 1, 4).setBackground(bg);
@@ -1059,4 +1060,5 @@ function debugOneExpense() {
 
   // File is NOT moved — debug only
 }
+
 
