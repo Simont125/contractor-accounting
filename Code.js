@@ -69,40 +69,43 @@ function rebuildSheet() {
     return da - db;
   });
 
-  const monthMap = {};
-  const monthOrder = [];
+  // Grouper par mois + employeur pour gérer plusieurs employeurs dans le même mois
+  const groupMap = {};
+  const groupOrder = [];
   dataRows.forEach(row => {
     const dateStr = normalizeDateKey(row[COL.DATE - 1]);
     if (!dateStr || dateStr.length < 7) return;
     const month = dateStr.substring(0, 7);
-    if (!monthMap[month]) {
-      monthMap[month] = [];
-      monthOrder.push(month);
+    const employer = (row[COL.EMPLOYER - 1] || CONFIG.EMPLOYER).toString().trim();
+    const key = month + '|' + employer;
+    if (!groupMap[key]) {
+      groupMap[key] = { month, employer, rows: [] };
+      groupOrder.push(key);
     }
-    monthMap[month].push(row);
+    groupMap[key].rows.push(row);
   });
 
   let nextRow = 2;
-  const monthMeta = monthOrder.map(month => {
-    const rows = monthMap[month];
+  const groupMeta = groupOrder.map(key => {
+    const { month, employer, rows } = groupMap[key];
     const startRow = nextRow;
     nextRow += rows.length;
     const brutRowNum = nextRow;
     nextRow += 2;
     nextRow++;
-    return { month, rows, startRow, endRow: startRow + rows.length - 1, brutRowNum };
+    return { key, month, employer, rows, startRow, endRow: startRow + rows.length - 1, brutRowNum };
   });
 
   const output = [];
   const boldRows = [];
 
-  monthMeta.forEach(({ month, rows, startRow, endRow, brutRowNum }) => {
-    const facture = getFactureForMonth_(month);
+  groupMeta.forEach(({ key, month, employer, rows, startRow, endRow, brutRowNum }) => {
+    const facture = getFactureForMonth_(key);
 
     rows.forEach((row, i) => {
       const newRow = row.slice(0, numCols);
       if (i === 0) {
-        newRow[COL.EMPLOYER - 1] = row[COL.EMPLOYER - 1] || CONFIG.EMPLOYER;
+        newRow[COL.EMPLOYER - 1] = employer;
       } else if (i === rows.length - 1 && rows.length > 1) {
         newRow[COL.EMPLOYER - 1] = facture;
       } else {
@@ -136,19 +139,19 @@ function rebuildSheet() {
   });
 }
 
-function getFactureForMonth_(month) {
+function getFactureForMonth_(key) {
   const props = PropertiesService.getScriptProperties();
   const stored = props.getProperty('FACTURE_MAP');
   const map = stored ? JSON.parse(stored) : {};
 
-  if (!map[month]) {
+  if (!map[key]) {
     const counter = parseInt(props.getProperty('FACTURE_COUNTER') || '0') + 1;
-    map[month] = 'Facture ' + String(counter).padStart(4, '0');
+    map[key] = 'Facture ' + String(counter).padStart(4, '0');
     props.setProperty('FACTURE_MAP', JSON.stringify(map));
     props.setProperty('FACTURE_COUNTER', String(counter));
   }
 
-  return map[month];
+  return map[key];
 }
 
 function processFolder(folderId, expectedType) {
@@ -791,20 +794,22 @@ function columnToLetter(column) {
 
 function initFactureCounter() {
   const props = PropertiesService.getScriptProperties();
+  // Clé = "YYYY-MM|Employeur"
   const map = {
-    '2025-08': 'Facture 0001',
-    '2025-09': 'Facture 0001',
-    '2025-10': 'Facture 0002',
-    '2025-11': 'Facture 0003',
-    '2025-12': 'Facture 0005',
-    '2026-02': 'Facture 0006',
-    '2026-03': 'Facture 0007',
-    '2026-04': 'Facture 0008',
-    '2026-05': 'Facture 0009'
+    '2025-08|Sky Service': 'Facture 0001',
+    '2025-09|Sky Service': 'Facture 0001',
+    '2025-10|OG aviation':  'Facture 0002',
+    '2025-11|PAL airlines': 'Facture 0003',
+    '2025-12|PAL airlines': 'Facture 0004',
+    '2025-12|SkyService':   'Facture 0005',
+    '2026-02|Innotech':     'Facture 0006',
+    '2026-03|Innotech':     'Facture 0007',
+    '2026-04|Innotech':     'Facture 0008',
+    '2026-05|Innotech':     'Facture 0009'
   };
   props.setProperty('FACTURE_MAP', JSON.stringify(map));
   props.setProperty('FACTURE_COUNTER', '9');
-  Logger.log('Facture counter initialisé à 9. Prochain: Facture 0010 (juin 2026).');
+  Logger.log('Facture counter initialisé à 9. Prochain: Facture 0010.');
 }
 
 function debugOneTimeCard() {
