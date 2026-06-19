@@ -902,7 +902,8 @@ function generateInvoice_(key, month, employer, allRows) {
   ws.getRange('B1:C1').merge().setValue(INVOICE_CONFIG.MY_NAME)
     .setBackground(LIGHT).setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(24);
   ws.getRange('D1:E1').merge().setValue('Invoice')
-    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(18);
+    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(18)
+    .setHorizontalAlignment('right');
 
   // Row 2 — Email | Invoice Number
   ws.getRange('B2:C2').merge().setValue(INVOICE_CONFIG.MY_EMAIL)
@@ -932,21 +933,21 @@ function generateInvoice_(key, month, employer, allRows) {
   ws.getRange('B8:C8').merge();  // keep left side merged (empty, matches template)
   ws.getRange('D8:E8').merge().setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
 
-  // Add borders to header block (rows 1-8) to visually unify each side into one block
-  // Left+top+bottom on each merged cell, matching original template border style
-  const setBorder = (range) => range.setBorder(true, true, true, false, false, false);
-  setBorder(ws.getRange('B1:C1'));
-  setBorder(ws.getRange('B2:C2'));
-  setBorder(ws.getRange('B3:C3'));
-  setBorder(ws.getRange('D1:E1'));
-  setBorder(ws.getRange('D2:E2'));
-  setBorder(ws.getRange('D3:E3'));
-  setBorder(ws.getRange('B4:C4'));
-  setBorder(ws.getRange('B5:C5'));
-  setBorder(ws.getRange('B6:C6'));
-  setBorder(ws.getRange('B7:C7'));
-  setBorder(ws.getRange('B8:C8'));
-  setBorder(ws.getRange('D4:E4'));
+  // Borders on light-blue left block (visible thin lines between rows, matching original)
+  const setLightBorder = (range) => range.setBorder(true, true, true, false, false, false);
+  setLightBorder(ws.getRange('B1:C1'));
+  setLightBorder(ws.getRange('B2:C2'));
+  setLightBorder(ws.getRange('B3:C3'));
+  setLightBorder(ws.getRange('B4:C4'));
+  setLightBorder(ws.getRange('B5:C5'));
+  setLightBorder(ws.getRange('B6:C6'));
+  setLightBorder(ws.getRange('B7:C7'));
+  setLightBorder(ws.getRange('B8:C8'));
+
+  // Dark right block D1:E3 — inner horizontal borders colored same as fill (#166982)
+  // so rows 1-2-3 appear as ONE seamless block (no visible gridlines between rows)
+  ws.getRange('D1:E3').setBorder(true, true, true, false, false, true, DARK, SpreadsheetApp.BorderStyle.SOLID);
+  setLightBorder(ws.getRange('D4:E4'));
 
   // Table header row 9
   ['B9','C9','D9','E9'].forEach(ref => ws.getRange(ref).setBackground(DARK).setFontColor(NEAR_WHITE).setFontSize(13));
