@@ -674,12 +674,26 @@ function normalizeDateKey(value) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return s;
 
-  // Format québécois M/D/YYYY ou MM/DD/YYYY — forcer DD/MM/YYYY
-  const qc = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (qc) {
-    const day = qc[1].padStart(2, '0');
-    const month = qc[2].padStart(2, '0');
-    const year = qc[3];
+  // Format slash M/J/AAAA ou J/M/AAAA — détecter intelligemment
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const n1 = parseInt(slash[1]);
+    const n2 = parseInt(slash[2]);
+    const year = slash[3];
+    let month, day;
+    if (n2 > 12) {
+      // Ex: 6/14/2026 → mois=6, jour=14 (format américain, jour > 12)
+      month = String(n1).padStart(2, '0');
+      day = String(n2).padStart(2, '0');
+    } else if (n1 > 12) {
+      // Ex: 14/6/2026 → jour=14, mois=6 (format québécois, jour > 12)
+      day = String(n1).padStart(2, '0');
+      month = String(n2).padStart(2, '0');
+    } else {
+      // Ambigu (ex: 7/6/2026) → assume québécois J/M/AAAA → jour=7, mois=6
+      day = String(n1).padStart(2, '0');
+      month = String(n2).padStart(2, '0');
+    }
     return `${year}-${month}-${day}`;
   }
 
