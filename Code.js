@@ -417,6 +417,17 @@ function normalizeExtraction(data) {
     data.expense.tip = round2(data.expense.tip || 0);
     data.expense.total = round2(data.expense.total || 0);
     data.expense.description = shortenDescription(data.expense.description || '');
+
+    // Si TPS et TVQ sont à 0 mais qu'il y a un total > subtotal, calculer les taxes par reverse
+    if (data.expense.tps === 0 && data.expense.tvq === 0 && data.expense.total > 0 && data.expense.expense > 0) {
+      const diff = round2(data.expense.total - data.expense.tip - data.expense.expense);
+      if (diff > 0.05) {
+        // Reverse TPS (5%) + TVQ (9.975%) sur le subtotal
+        const subtotal = data.expense.expense;
+        data.expense.tps = round2(subtotal * 0.05);
+        data.expense.tvq = round2(subtotal * 0.09975);
+      }
+    }
   }
 }
 
@@ -662,6 +673,15 @@ function normalizeDateKey(value) {
 
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return s;
+
+  // Format québécois M/D/YYYY ou MM/DD/YYYY — forcer DD/MM/YYYY
+  const qc = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (qc) {
+    const day = qc[1].padStart(2, '0');
+    const month = qc[2].padStart(2, '0');
+    const year = qc[3];
+    return `${year}-${month}-${day}`;
+  }
 
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) {
