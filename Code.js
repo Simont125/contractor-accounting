@@ -204,14 +204,15 @@ TIME CARD output:
 
 TIME CARD RULES:
 - Return raw_time_blocks only.
-- Each visible R.T. / HOURS value must become one raw_time_blocks item.
-- Do NOT add hours yourself.
+- If a field labeled "TOTAL HOURS" or "TOTAL" is clearly written at the bottom of the card for a specific date, use that value as rt_hours for that date and return it as a SINGLE raw_time_blocks entry for that date. Do NOT return other RT blocks for that date.
+- If no TOTAL HOURS field is visible, extract each visible R.T. / HOURS value as a separate raw_time_blocks item and let the script sum them.
+- Do NOT add hours yourself when TOTAL HOURS is not present.
 - Do NOT merge dates yourself.
-- Do NOT calculate final daily totals.
-- The script will calculate totals later.
+- Do NOT calculate final daily totals when TOTAL HOURS is not present.
+- The script will calculate totals later when TOTAL HOURS is absent.
 - Ignore handwritten start/end times like 8:15 -> 14:00.
 - Ignore W.O. numbers.
-- rt_hours must only be the number written inside the R.T. / HOURS column.
+- rt_hours must only be the number written inside the R.T. / HOURS column, or the TOTAL HOURS field if present.
 
 EXPENSE output:
 {
