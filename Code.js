@@ -14,6 +14,15 @@ const CONFIG = {
   REVIEW_DIFFERENCE_LIMIT: 0.50
 };
 
+// Cached sheet reference — reused across all functions within one execution
+let _sheet = null;
+function getSheet_() {
+  if (!_sheet) {
+    _sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  }
+  return _sheet;
+}
+
 const COL = {
   EMPLOYER: 1,
   DATE: 2,
@@ -278,6 +287,12 @@ function normalizeExtraction(data) {
         };
       }
 
+      if (hours <= 0) {
+        data.needs_review = true;
+        data.review_reason = 'Heures à 0 ou manquantes pour la date ' + dateKey + '. Vérifier la time card.';
+        return;
+      }
+
       grouped[dateKey].hours = round2(grouped[dateKey].hours + hours);
       grouped[dateKey].plane = mergeText(grouped[dateKey].plane, plane);
     });
@@ -378,7 +393,7 @@ function writeExtractionToSheet(data) {
 }
 
 function upsertRowByDate(data) {
-  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const sheet = getSheet_();
   const rowNumber = findRowByDate(data.date);
 
   if (rowNumber) {
@@ -389,7 +404,7 @@ function upsertRowByDate(data) {
 }
 
 function findRowByDate(dateValue) {
-  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
 
   if (lastRow < 2) return null;
@@ -410,7 +425,8 @@ function findRowByDate(dateValue) {
   return null;
 }
 
-function appendNewRow(sheet, data) {
+function appendNewRow(_, data) {
+  const sheet = getSheet_();
   sheet.appendRow([
     data.employer || CONFIG.EMPLOYER,
     data.date || '',
@@ -426,7 +442,8 @@ function appendNewRow(sheet, data) {
   ]);
 }
 
-function mergeIntoExistingRow(sheet, row, data) {
+function mergeIntoExistingRow(_, row, data) {
+  const sheet = getSheet_();
   if (data.employer) sheet.getRange(row, COL.EMPLOYER).setValue(data.employer);
 
   if (data.plane) {
@@ -457,7 +474,8 @@ function mergeIntoExistingRow(sheet, row, data) {
   }
 }
 
-function addNumber(sheet, row, col, value) {
+function addNumber(_, row, col, value) {
+  const sheet = getSheet_();
   if (value === undefined || value === null || value === '') return;
 
   const oldValue = Number(sheet.getRange(row, col).getValue()) || 0;
@@ -465,9 +483,7 @@ function addNumber(sheet, row, col, value) {
 }
 
 function sortSheetByDate() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
-  removeSummaryRows();
-
+  const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow <= 2) return;
 
@@ -477,8 +493,7 @@ function sortSheetByDate() {
 }
 
 function addSummaryRows() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
-  removeSummaryRows();
+  const sheet = getSheet_();
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
@@ -512,7 +527,7 @@ function addSummaryRows() {
 }
 
 function removeSummaryRows() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getActiveSheet();
+  const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
 
   if (lastRow < 2) return;
@@ -645,16 +660,35 @@ function debugOneTimeCard() {
   }
 
   const file = files.next();
-
   Logger.log('Testing file: ' + file.getName());
 
   const extraction = analyzePdfWithOpenAI(file, 'TIME_CARD');
-
-  Logger.log('BEFORE NORMALIZE:');
-  Logger.log(JSON.stringify(extraction, null, 2));
+  Logger.log('BEFORE NORMALIZE:\n' + JSON.stringify(extraction, null, 2));
 
   normalizeExtraction(extraction);
+  Logger.log('AFTER NORMALIZE:\n' + JSON.stringify(extraction, null, 2));
 
-  Logger.log('AFTER NORMALIZE:');
-  Logger.log(JSON.stringify(extraction, null, 2));
+  // File is NOT moved — debug only
+}
+
+function debugOneExpense() {
+  const folder = DriveApp.getFolderById(CONFIG.EXPENSE_FOLDER_ID);
+  const files = folder.getFiles();
+
+  if (!files.hasNext()) {
+    Logger.log('Aucun fichier dans Expenses à traiter.');
+    return;
+  }
+
+  const file = files.next();
+  Logger.log('Testing file: ' + file.getName());
+
+  const extraction = analyzePdfWithOpenAI(file, 'EXPENSE');
+  Logger.log('BEFORE NORMALIZE:\n' + JSON.stringify(extraction, null, 2));
+
+  normalizeExtraction(extraction);
+  validateExpenseMath(extraction);
+  Logger.log('AFTER NORMALIZE + VALIDATE:\n' + JSON.stringify(extraction, null, 2));
+
+  // File is NOT moved — debug only
 }
