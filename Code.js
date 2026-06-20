@@ -879,7 +879,8 @@ function generateInvoice_(key, month, employer, allRows) {
   const thankYouRow = 18 + N;
 
   const templateFile = DriveApp.getFileById(INVOICE_CONFIG.TEMPLATE_FILE_ID);
-  const zipEntries = Utilities.unzip(templateFile.getBlob());
+  const templateBlob = templateFile.getBlob().setContentType('application/zip');
+  const zipEntries = Utilities.unzip(templateBlob);
 
   const newEntries = zipEntries.map(function(entry) {
     const name = entry.getName();
