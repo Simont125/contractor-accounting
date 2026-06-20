@@ -892,7 +892,8 @@ function generateInvoice_(key, month, employer, allRows) {
   // Row heights (Google Apps Script px: Excel pt × 96/72)
   ws.setRowHeight(1, 70);  // 52.5pt — 24pt font title
   ws.setRowHeight(2, 40);  // 30.0pt — 18pt font
-  for (let r = 3; r <= 8; r++) ws.setRowHeight(r, 26); // 19.5pt
+  for (let r = 3; r <= 7; r++) ws.setRowHeight(r, 26); // 19.5pt
+  ws.setRowHeight(8, 40);  // 30.0pt — matches original
   ws.setRowHeight(9, 40);  // 30.0pt — table header
 
   const NEAR_WHITE = '#F0F0F0';
