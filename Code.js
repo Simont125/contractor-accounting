@@ -1,4 +1,4 @@
-const CONFIG = {
+﻿const CONFIG = {
   SHEET_ID: '1Z627WaYnj0ZdWsjcho6sw0Jr3c5gjBWLoYHIxq0vL-4',
 
   TIME_CARD_FOLDER_ID: '1JSqdniofDVoFZWoxbCkIy46aYrSOJ9q3',
@@ -25,6 +25,7 @@ const INVOICE_CONFIG = {
   TPS_NUMBER: '744633553 RT0001',
   TVQ_NUMBER: '4002578340 TQ0001',
   SIGN_OFF:   'Execaire sign-off : ___________________________',
+  TEMPLATE_FILE_ID: '1ima_yRqDNyJ5BvctabMaXKL4N-wrQ3Pk',
   EMPLOYERS: {
     'Innotech': ['Innotech Aviation', '10225 RYAN AVENUE', 'DORVAL-QUEBEC H9P-1A2']
   }
@@ -872,146 +873,113 @@ function generateInvoice_(key, month, employer, allRows) {
   const tps = round2(subtotal * 0.05);
   const tvq = round2(subtotal * 0.09975);
   const total = round2(subtotal + tps + tvq);
-
   const employerInfo = INVOICE_CONFIG.EMPLOYERS[employer] || [employer, '', ''];
-  const DARK  = '#166982';
-  const LIGHT = '#DCF2F8';
-  const WHITE = '#FFFFFF';
 
-  const ss = SpreadsheetApp.create(fileName);
-  const ws = ss.getActiveSheet();
+  const N = salaryRows.length;
+  const thankYouRow = 18 + N;
 
-  // Column widths — px values calibrated for Google→Excel export scaling (~×1.138)
-  ws.setColumnWidth(1, 20);   // A → 2.63
-  ws.setColumnWidth(2, 246);  // B → 30.88
-  ws.setColumnWidth(3, 189);  // C → 23.75
-  ws.setColumnWidth(4, 86);   // D → 10.88
-  ws.setColumnWidth(5, 240);  // E → 30.13
-  ws.setColumnWidth(6, 20);   // F → 2.63
+  const templateFile = DriveApp.getFileById(INVOICE_CONFIG.TEMPLATE_FILE_ID);
+  const zipEntries = Utilities.unzip(templateFile.getBlob());
 
-  // Row heights (Google Apps Script px: Excel pt × 96/72)
-  ws.setRowHeight(1, 70);  // 52.5pt — 24pt font title
-  ws.setRowHeight(2, 40);  // 30.0pt — 18pt font
-  for (let r = 3; r <= 7; r++) ws.setRowHeight(r, 26); // 19.5pt
-  ws.setRowHeight(8, 40);  // 30.0pt — matches original
-  ws.setRowHeight(9, 40);  // 30.0pt — table header
+  const newEntries = zipEntries.map(function(entry) {
+    const name = entry.getName();
+    if (name !== 'xl/worksheets/sheet1.xml') return entry;
 
-  const NEAR_WHITE = '#F0F0F0';
-  const BLUE_TEXT  = '#166982';
+    let xml = entry.getDataAsString('UTF-8');
 
-  // Row 1 — Name | Invoice
-  ws.getRange('B1:C1').merge().setValue(INVOICE_CONFIG.MY_NAME)
-    .setBackground(LIGHT).setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(24);
-  ws.getRange('D1:E1').merge().setValue('Invoice')
-    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(18)
-    .setHorizontalAlignment('right');
+    xml = xml.replace('<c r="D2" s="6" t="s"><v>3</v></c>',
+      '<c r="D2" s="6" t="inlineStr"><is><t xml:space="preserve">Invoice Number :     ' + invoiceNumber + '</t></is></c>');
+    xml = xml.replace('<c r="D3" s="6" t="s"><v>5</v></c>',
+      '<c r="D3" s="6" t="inlineStr"><is><t xml:space="preserve">Date of invoice :       ' + invoiceDate + '</t></is></c>');
+    xml = xml.replace('<c r="B5" s="8" t="s"><v>8</v></c>',
+      '<c r="B5" s="8" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[0]) + '</t></is></c>');
+    xml = xml.replace('<c r="B6" s="8" t="s"><v>9</v></c>',
+      '<c r="B6" s="8" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[1]) + '</t></is></c>');
+    xml = xml.replace('<c r="B7" s="9" t="s"><v>11</v></c>',
+      '<c r="B7" s="9" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[2]) + '</t></is></c>');
 
-  // Row 2 — Email | Invoice Number
-  ws.getRange('B2:C2').merge().setValue(INVOICE_CONFIG.MY_EMAIL)
-    .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
-  
-  ws.getRange('D2:E2').merge().setValue('Invoice Number :     ' + invoiceNumber)
-    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
-  
+    const row10Start = xml.indexOf('<row r="10"');
+    const sheetDataEnd = xml.indexOf('</sheetData>');
+    const newRows = buildInvoiceRowsXml_(salaryRows, tps, tvq, total, N);
+    xml = xml.substring(0, row10Start) + newRows + '</sheetData>' + xml.substring(sheetDataEnd + 12);
 
-  // Row 3 — Phone | Date
-  ws.getRange('B3:C3').merge().setValue('Tél. : ' + INVOICE_CONFIG.MY_PHONE)
-    .setBackground(LIGHT).setFontColor(BLUE_TEXT).setFontSize(11);
-  
-  ws.getRange('D3:E3').merge().setValue('Date of invoice :       ' + invoiceDate)
-    .setBackground(DARK).setFontWeight('bold').setFontColor(NEAR_WHITE).setFontSize(11);
-  
+    xml = xml.replace('ref="B31:E31"', 'ref="B' + thankYouRow + ':E' + thankYouRow + '"');
+    xml = xml.replace(/<tableParts[^>]*>[\s\S]*?<\/tableParts>/, '');
 
-  // Addresses
-  ws.getRange('B4:C4').merge().setValue('Invoice to :').setFontWeight('bold').setFontSize(11);
-  ws.getRange('D4:E4').merge().setValue('Send at :').setFontWeight('bold').setFontSize(11);
-  ws.getRange('B5:C5').merge().setValue(employerInfo[0]).setFontSize(11);
-  ws.getRange('D5:E5').merge().setValue(INVOICE_CONFIG.MY_NAME).setFontSize(11);
-  ws.getRange('B6:C6').merge().setValue(employerInfo[1]).setFontSize(11);
-  ws.getRange('D6:E6').merge().setValue(INVOICE_CONFIG.MY_ADDRESS).setFontSize(11);
-  ws.getRange('B7:C7').merge().setValue(employerInfo[2]).setFontSize(11);
-  ws.getRange('D7:E7').merge().setValue(INVOICE_CONFIG.MY_CITY).setFontSize(11);
-  ws.getRange('B8:C8').merge();  // keep left side merged (empty, matches template)
-  ws.getRange('D8:E8').merge().setValue(INVOICE_CONFIG.MY_PAYMENT).setFontSize(11);
-
-  // Dark right block D1:E3 — inner horizontal borders colored same as fill (#166982)
-  // so rows 1-2-3 appear as ONE seamless block with no visible gridlines between rows
-  ws.getRange('D1:E3').setBorder(true, true, true, false, false, true, DARK, SpreadsheetApp.BorderStyle.SOLID);
-
-  // Table header row 9
-  ['B9','C9','D9','E9'].forEach(ref => ws.getRange(ref).setBackground(DARK).setFontColor(NEAR_WHITE).setFontSize(13));
-  ws.getRange('B9').setValue('Date');
-  ws.getRange('C9').setValue('Plane');
-  ws.getRange('D9').setValue('Hours');
-  ws.getRange('E9').setValue('AMOUNT');
-
-  // Data rows
-  let dataRow = 10;
-  salaryRows.forEach((row, i) => {
-    const bg = i % 2 === 1 ? LIGHT : null;
-    const rawDate = row[COL.DATE - 1];
-    const dateStr = rawDate instanceof Date
-      ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), 'yyyy-MM-dd')
-      : String(rawDate);
-    ws.getRange(dataRow, 2).setValue(dateStr).setNumberFormat('@').setFontSize(11);
-    const planeVal = row[COL.PLANE - 1];
-    ws.getRange(dataRow, 3).setValue(!planeVal || planeVal === 'None' ? '' : planeVal).setFontSize(11);
-    ws.getRange(dataRow, 4).setValue(row[COL.HOURS - 1] || 0).setFontSize(11);
-    ws.getRange(dataRow, 5).setValue(row[COL.SALARY - 1] || 0).setNumberFormat('#,##0.00').setFontSize(11);
-    if (bg) ws.getRange(dataRow, 2, 1, 4).setBackground(bg);
-    ws.setRowHeight(dataRow, 26); // 19.5pt
-    dataRow++;
+    return Utilities.newBlob(xml, 'application/xml', name);
   });
 
-  // 3 blank separator rows (19.5pt each)
-  for (let r = dataRow; r < dataRow + 3; r++) ws.setRowHeight(r, 29); // 21.75pt
-  dataRow += 3;
-
-  ws.getRange(dataRow, 2).setValue('TVQ (' + INVOICE_CONFIG.TVQ_NUMBER + ')').setFontSize(11).setBackground(LIGHT);
-  ws.getRange(dataRow, 5).setValue(tvq).setNumberFormat('#,##0.00').setFontSize(11).setBackground(LIGHT);
-  ws.setRowHeight(dataRow, 28); // 21.0pt
-  dataRow++;
-
-  ws.getRange(dataRow, 2).setValue('TPS (' + INVOICE_CONFIG.TPS_NUMBER + ')').setFontSize(11);
-  ws.getRange(dataRow, 5).setValue(tps).setNumberFormat('#,##0.00').setFontSize(11);
-  ws.setRowHeight(dataRow, 27); // 20.25pt
-  dataRow++;
-
-  ws.getRange(dataRow, 2).setValue('EXPEDITION FEES').setFontSize(11);
-  ws.setRowHeight(dataRow, 29); // 21.75pt
-  dataRow++;
-
-  ws.getRange(dataRow, 2).setValue('TOTAL').setFontWeight('bold').setFontSize(11);
-  ws.getRange(dataRow, 5).setValue(total).setNumberFormat('#,##0.00').setFontWeight('bold').setFontSize(11);
-  ws.setRowHeight(dataRow, 28); // 21.0pt
-  dataRow++;
-
-  // 2 blank rows before footer
-  ws.setRowHeight(dataRow, 28);
-  ws.setRowHeight(dataRow + 1, 40); // 30pt — pre-footer
-  dataRow++;
-
-  ws.getRange(dataRow, 2, 1, 4).merge().setValue('Thank you for your trust in me!')
-    .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
-  ws.setRowHeight(dataRow, 40); // 30.0pt
-  dataRow++;
-  ws.getRange(dataRow, 2).setValue(INVOICE_CONFIG.SIGN_OFF)
-    .setFontWeight('bold').setFontColor(BLUE_TEXT).setFontSize(12);
-  ws.setRowHeight(dataRow, 40); // 30.0pt
-
-  // Export as XLSX via Sheets export URL
-  SpreadsheetApp.flush();
-  const exportUrl = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
-  const token = ScriptApp.getOAuthToken();
-  const response = UrlFetchApp.fetch(exportUrl, { headers: { Authorization: 'Bearer ' + token } });
-  const blob = response.getBlob().setName(fileName + '.xlsx');
+  const newXlsx = Utilities.zip(newEntries, fileName + '.xlsx');
+  newXlsx.setContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
-  const file = folder.createFile(blob);
-  DriveApp.getFileById(ss.getId()).setTrashed(true);
+  const file = folder.createFile(newXlsx);
 
   markInvoiceGenerated_(key, fileName);
-  Logger.log('Facture générée : ' + fileName + ' → ' + file.getUrl());
+  Logger.log('Facture generee : ' + fileName + ' -> ' + file.getUrl());
 }
+
+function buildInvoiceRowsXml_(salaryRows, tps, tvq, total, N) {
+  var xml = '';
+
+  salaryRows.forEach(function(row, i) {
+    var rowNum = 10 + i;
+    var serial = dateToExcelSerial_(row[COL.DATE - 1]);
+    var desc = row[COL.PLANE - 1];
+    var descStr = (!desc || String(desc) === 'None') ? '' : String(desc);
+    var hours = row[COL.HOURS - 1] || 0;
+    var amount = row[COL.SALARY - 1] || 0;
+    var bSty = i === 0 ? '12' : '17';
+    var fSty = i === 0 ? '16' : '18';
+    xml += '<row r="' + rowNum + '" ht="19.5" customHeight="1">';
+    xml += '<c r="B' + rowNum + '" s="' + bSty + '"><v>' + serial + '</v></c>';
+    xml += '<c r="C' + rowNum + '" s="13" t="inlineStr"><is><t>' + xmlEscape_(descStr) + '</t></is></c>';
+    xml += '<c r="D' + rowNum + '" s="14"><v>' + hours + '</v></c>';
+    xml += '<c r="E' + rowNum + '" s="15"><v>' + amount + '</v></c>';
+    xml += '<c r="F' + rowNum + '" s="' + fSty + '"/>';
+    xml += '</row>';
+  });
+
+  var r = 10 + N;
+  xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="19"/><c r="C' + r + '" s="13"/><c r="D' + r + '" s="14"/><c r="E' + r + '" s="15"/><c r="F' + r + '" s="18"/></row>';
+  for (var e = 1; e <= 2; e++) {
+    r = 10 + N + e;
+    xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="30"/><c r="C' + r + '" s="31"/><c r="D' + r + '" s="32"/><c r="E' + r + '" s="33"/><c r="F' + r + '" s="18"/></row>';
+  }
+
+  r = 13 + N;
+  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="36" t="s"><v>23</v></c><c r="C' + r + '" s="37"/><c r="D' + r + '" s="38"/><c r="E' + r + '" s="39"><v>' + tvq + '</v></c><c r="F' + r + '" s="18"/></row>';
+  r = 14 + N;
+  xml += '<row r="' + r + '" ht="20.25" customHeight="1"><c r="B' + r + '" s="40" t="s"><v>24</v></c><c r="C' + r + '" s="18"/><c r="D' + r + '" s="18"/><c r="E' + r + '" s="41"><v>' + tps + '</v></c><c r="F' + r + '" s="18"/></row>';
+  r = 15 + N;
+  xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="42" t="s"><v>25</v></c><c r="C' + r + '" s="43"/><c r="D' + r + '" s="43"/><c r="E' + r + '" s="43" t="s"><v>26</v></c><c r="F' + r + '" s="44"/></row>';
+  r = 16 + N;
+  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="42" t="s"><v>27</v></c><c r="C' + r + '" s="43"/><c r="D' + r + '" s="43"/><c r="E' + r + '" s="45"><v>' + total + '</v></c></row>';
+  r = 17 + N;
+  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="46"/></row>';
+  r = 18 + N;
+  xml += '<row r="' + r + '" ht="30.0" customHeight="1"><c r="B' + r + '" s="47" t="s"><v>28</v></c></row>';
+  r = 19 + N;
+  xml += '<row r="' + r + '" ht="30.0" customHeight="1"><c r="B' + r + '" s="48" t="s"><v>29</v></c></row>';
+
+  return xml;
+}
+
+function xmlEscape_(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function dateToExcelSerial_(dateVal) {
+  if (!dateVal) return 0;
+  var d = dateVal instanceof Date ? dateVal : new Date(String(dateVal));
+  var utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  return Math.round(utc.getTime() / 86400000) + 25569;
+}
+
+
 
 function hasInvoiceBeenGenerated_(key) {
   const props = PropertiesService.getScriptProperties();
