@@ -911,14 +911,9 @@ function generateInvoice_(key, month, employer, allRows) {
   });
 
   const newXlsx = Utilities.zip(newEntries, fileName + '.xlsx');
+  const xlsxBlob = Utilities.newBlob(newXlsx.getBytes(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', fileName + '.xlsx');
   const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
-  const file = folder.createFile(newXlsx);
-  const token = ScriptApp.getOAuthToken();
-  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + file.getId(), {
-    method: 'PATCH',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    payload: JSON.stringify({ mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  });
+  const file = folder.createFile(xlsxBlob);
 
   markInvoiceGenerated_(key, fileName);
   Logger.log('Facture generee : ' + fileName + ' -> ' + file.getUrl());
