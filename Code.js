@@ -910,7 +910,6 @@ function generateInvoice_(key, month, employer, allRows) {
   });
 
   const newXlsx = Utilities.zip(newEntries, fileName + '.xlsx');
-  newXlsx.setContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
   const file = folder.createFile(newXlsx);
 
