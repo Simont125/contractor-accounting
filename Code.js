@@ -618,8 +618,19 @@ function addNumber(_, row, col, value) {
   const sheet = getSheet_();
   if (value === undefined || value === null || value === '') return;
 
-  const oldValue = Number(sheet.getRange(row, col).getValue()) || 0;
-  sheet.getRange(row, col).setValue(round2(oldValue + Number(value)));
+  const cell = sheet.getRange(row, col);
+  const newVal = round2(Number(value));
+  const existing = cell.getFormula();
+  if (existing && existing.startsWith('=')) {
+    cell.setFormula(existing + '+' + newVal);
+  } else {
+    const oldValue = Number(cell.getValue()) || 0;
+    if (oldValue !== 0) {
+      cell.setFormula('=' + oldValue + '+' + newVal);
+    } else {
+      cell.setValue(newVal);
+    }
+  }
 }
 
 function sortSheetByDate() {
