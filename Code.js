@@ -187,6 +187,9 @@ function processFolder(folderId, expectedType) {
       }
 
       normalizeExtraction(extraction);
+      if (expectedType === 'EXPENSE' && extraction.expense) {
+        extraction.expense.date = Utilities.formatDate(file.getDateCreated(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      }
       validateExpenseMath(extraction);
 
       if (extraction.needs_review) {
