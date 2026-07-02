@@ -1063,6 +1063,37 @@ function debugOneExpense() {
   // File is NOT moved — debug only
 }
 
+function inspectAndFixFactureMap() {
+  const props = PropertiesService.getScriptProperties();
+  const map = JSON.parse(props.getProperty('FACTURE_MAP') || '{}');
+  const counter = props.getProperty('FACTURE_COUNTER');
+  Logger.log('FACTURE_COUNTER: ' + counter);
+  Logger.log('FACTURE_MAP: ' + JSON.stringify(map, null, 2));
+
+  // Fix: reassign 2026-06|Innotech to Facture 0010
+  map['2026-06|Innotech'] = 'Facture 0010';
+  // Fix counter to 10 if currently higher due to orphaned test runs
+  if (parseInt(counter) > 10) {
+    props.setProperty('FACTURE_COUNTER', '10');
+  }
+  props.setProperty('FACTURE_MAP', JSON.stringify(map));
+  Logger.log('Fixed: 2026-06|Innotech -> Facture 0010');
+}
+
+function fixHomeDepotDate() {
+  const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+  for (let i = 0; i < data.length; i++) {
+    const dateCell = data[i][1];
+    const desc = (data[i][10] || '').toString();
+    if (desc.indexOf('Home Depot') !== -1) {
+      sheet.getRange(i + 1, 2).setValue('2026-06-07');
+      Logger.log('Fixed Home Depot date at row ' + (i + 1) + ' -> 2026-06-07');
+    }
+  }
+}
+
 function forceRegenerateMayInvoice() {
   const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
   const files = folder.getFiles();
