@@ -25,7 +25,7 @@ const INVOICE_CONFIG = {
   TPS_NUMBER: '744633553 RT0001',
   TVQ_NUMBER: '4002578340 TQ0001',
   SIGN_OFF:   'Execaire sign-off : ___________________________',
-  TEMPLATE_FILE_ID: '1ima_yRqDNyJ5BvctabMaXKL4N-wrQ3Pk',
+  TEMPLATE_FILE_ID: '19yOcaYM2xk5DyMeGmYfDfkVORn71ykRD',
   EMPLOYERS: {
     'Innotech': ['Innotech Aviation', '10225 RYAN AVENUE', 'DORVAL-QUEBEC H9P-1A2']
   }
@@ -864,24 +864,21 @@ function generateInvoice_(key, month, employer, allRows) {
   const year = month.substring(0, 4);
   const monthNum = parseInt(month.substring(5, 7));
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const monthShort = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const monthName = monthNames[monthNum - 1];
   const lastDay = new Date(parseInt(year), monthNum, 0).getDate();
   const invoiceNumber = year + '-' + factureNum;
-  const invoiceDate = lastDay + '-' + monthShort[monthNum - 1] + '-' + year;
+  const invoiceDate = monthName + ' ' + lastDay + ', ' + year;
   const fileName = 'Invoice ' + factureNum + ' - ' + monthName + ' ' + year + ' - ' + INVOICE_CONFIG.MY_NAME;
 
   const salaryRows = allRows.filter(r => (r[COL.HOURS - 1] || 0) > 0);
   if (salaryRows.length === 0) return;
 
   const subtotal = round2(salaryRows.reduce((s, r) => s + (r[COL.SALARY - 1] || 0), 0));
-  const tps = round2(subtotal * 0.05);
-  const tvq = round2(subtotal * 0.09975);
-  const total = round2(subtotal + tps + tvq);
+  const tps     = round2(subtotal * 0.05);
+  const tvq     = round2(subtotal * 0.09975);
+  const total   = round2(subtotal + tps + tvq);
   const employerInfo = INVOICE_CONFIG.EMPLOYERS[employer] || [employer, '', ''];
-
   const N = salaryRows.length;
-  const thankYouRow = 18 + N;
 
   const templateFile = DriveApp.getFileById(INVOICE_CONFIG.TEMPLATE_FILE_ID);
   const templateBlob = templateFile.getBlob().setContentType('application/zip');
@@ -893,24 +890,24 @@ function generateInvoice_(key, month, employer, allRows) {
 
     let xml = entry.getDataAsString('UTF-8');
 
-    xml = xml.replace('<c r="D2" s="6" t="s"><v>3</v></c>',
-      '<c r="D2" s="6" t="inlineStr"><is><t xml:space="preserve">Invoice Number :     ' + invoiceNumber + '</t></is></c>');
-    xml = xml.replace('<c r="D3" s="6" t="s"><v>5</v></c>',
-      '<c r="D3" s="6" t="inlineStr"><is><t xml:space="preserve">Date of invoice :       ' + invoiceDate + '</t></is></c>');
-    xml = xml.replace('<c r="B5" s="8" t="s"><v>8</v></c>',
-      '<c r="B5" s="8" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[0]) + '</t></is></c>');
-    xml = xml.replace('<c r="B6" s="8" t="s"><v>9</v></c>',
-      '<c r="B6" s="8" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[1]) + '</t></is></c>');
-    xml = xml.replace('<c r="B7" s="9" t="s"><v>11</v></c>',
-      '<c r="B7" s="9" t="inlineStr"><is><t>' + xmlEscape_(employerInfo[2]) + '</t></is></c>');
+    // Simple placeholder replacements for static cells
+    xml = xml.replace('{{INVOICE_NUMBER}}', xmlEscape_(invoiceNumber));
+    xml = xml.replace('{{INVOICE_DATE}}',   xmlEscape_(invoiceDate));
+    xml = xml.replace('{{EMPLOYER_NAME}}',  xmlEscape_(employerInfo[0]));
+    xml = xml.replace('{{EMPLOYER_ADDR1}}', xmlEscape_(employerInfo[1]));
+    xml = xml.replace('{{EMPLOYER_ADDR2}}', xmlEscape_(employerInfo[2]));
 
-    const row10Start = xml.indexOf('<row r="10"');
+    // Replace rows 11+ (data + summary + footer) with dynamic content
+    const row11Start  = xml.indexOf('<row r="11"');
     const sheetDataEnd = xml.indexOf('</sheetData>');
-    const newRows = buildInvoiceRowsXml_(salaryRows, tps, tvq, total, N);
-    xml = xml.substring(0, row10Start) + newRows + '</sheetData>' + xml.substring(sheetDataEnd + 12);
+    const dynamicXml  = buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N);
+    xml = xml.substring(0, row11Start) + dynamicXml + '</sheetData>' + xml.substring(sheetDataEnd + 12);
 
-    xml = xml.replace('ref="B31:E31"', 'ref="B' + thankYouRow + ':E' + thankYouRow + '"');
-    xml = xml.replace(/<tableParts[^>]*>[\s\S]*?<\/tableParts>/, '');
+    // Update mergeCells row numbers (shift by N-2 since template has 2 placeholder rows)
+    const shift = N - 2;
+    xml = xml.replace('ref="B22:E22"', 'ref="B' + (22 + shift) + ':E' + (22 + shift) + '"');
+    xml = xml.replace('ref="B23:E23"', 'ref="B' + (23 + shift) + ':E' + (23 + shift) + '"');
+    xml = xml.replace('ref="C25:E25"', 'ref="C' + (25 + shift) + ':E' + (25 + shift) + '"');
 
     return Utilities.newBlob(xml, 'application/xml', name);
   });
@@ -924,48 +921,111 @@ function generateInvoice_(key, month, employer, allRows) {
   Logger.log('Facture generee : ' + fileName + ' -> ' + file.getUrl());
 }
 
-function buildInvoiceRowsXml_(salaryRows, tps, tvq, total, N) {
+function formatDisplayDate_(val) {
+  const s = normalizeDateKey(val);
+  if (!s || s.length < 10) return String(val);
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const m = parseInt(s.substring(5, 7));
+  const d = parseInt(s.substring(8, 10));
+  const y = s.substring(0, 4);
+  return months[m - 1] + ' ' + d + ', ' + y;
+}
+
+function fmtMoney_(n) {
+  return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N) {
+  // Style indices from new template:
+  // s1=left margin, s13/s14/s15=odd row (B/C, D, E), s16/s17/s18=even row
+  // s19=separator stripe, s20=summary label, s18=summary value
+  // s21=TOTAL label (navy), s22=TOTAL value (navy)
+  // s7=blue stripe, s23=footer small text, s24=thank you italic
+  // s25=sign-off label, s10=sign-off line
   var xml = '';
 
+  // Data rows
   salaryRows.forEach(function(row, i) {
-    var rowNum = 10 + i;
-    var serial = dateToExcelSerial_(row[COL.DATE - 1]);
-    var desc = row[COL.PLANE - 1];
-    var descStr = (!desc || String(desc) === 'None') ? '' : String(desc);
+    var r = 11 + i;
+    var isOdd = (i % 2 === 0);
+    var sBtC = isOdd ? '13' : '16';
+    var sD   = isOdd ? '14' : '17';
+    var sE   = isOdd ? '15' : '18';
+    var dateStr = xmlEscape_(formatDisplayDate_(row[COL.DATE - 1]));
+    var plane = row[COL.PLANE - 1];
+    var planeStr = (!plane || String(plane) === 'None') ? '' : xmlEscape_(String(plane));
     var hours = row[COL.HOURS - 1] || 0;
     var amount = row[COL.SALARY - 1] || 0;
-    var bSty = i === 0 ? '12' : '17';
-    var fSty = i === 0 ? '16' : '18';
-    xml += '<row r="' + rowNum + '" ht="19.5" customHeight="1">';
-    xml += '<c r="B' + rowNum + '" s="' + bSty + '"><v>' + serial + '</v></c>';
-    xml += '<c r="C' + rowNum + '" s="13" t="inlineStr"><is><t>' + xmlEscape_(descStr) + '</t></is></c>';
-    xml += '<c r="D' + rowNum + '" s="14"><v>' + hours + '</v></c>';
-    xml += '<c r="E' + rowNum + '" s="15"><v>' + amount + '</v></c>';
-    xml += '<c r="F' + rowNum + '" s="' + fSty + '"/>';
+    xml += '<row r="' + r + '" ht="18" customHeight="1">';
+    xml += '<c r="A' + r + '" s="1"/>';
+    xml += '<c r="B' + r + '" s="' + sBtC + '" t="inlineStr"><is><t>' + dateStr + '</t></is></c>';
+    xml += '<c r="C' + r + '" s="' + sBtC + '" t="inlineStr"><is><t>' + planeStr + '</t></is></c>';
+    xml += '<c r="D' + r + '" s="' + sD + '" t="inlineStr"><is><t>' + hours + '</t></is></c>';
+    xml += '<c r="E' + r + '" s="' + sE + '" t="inlineStr"><is><t>' + fmtMoney_(amount) + '</t></is></c>';
     xml += '</row>';
   });
 
-  var r = 10 + N;
-  xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="19"/><c r="C' + r + '" s="13"/><c r="D' + r + '" s="14"/><c r="E' + r + '" s="15"/><c r="F' + r + '" s="18"/></row>';
-  for (var e = 1; e <= 2; e++) {
-    r = 10 + N + e;
-    xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="30"/><c r="C' + r + '" s="31"/><c r="D' + r + '" s="32"/><c r="E' + r + '" s="33"/><c r="F' + r + '" s="18"/></row>';
+  // Two empty spacer rows
+  for (var e = 0; e < 2; e++) {
+    var r2 = 11 + N + e;
+    xml += '<row r="' + r2 + '"><c r="A' + r2 + '" s="1"/></row>';
   }
 
-  r = 13 + N;
-  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="36" t="s"><v>23</v></c><c r="C' + r + '" s="37"/><c r="D' + r + '" s="38"/><c r="E' + r + '" s="39"><v>' + tvq + '</v></c><c r="F' + r + '" s="18"/></row>';
-  r = 14 + N;
-  xml += '<row r="' + r + '" ht="20.25" customHeight="1"><c r="B' + r + '" s="40" t="s"><v>24</v></c><c r="C' + r + '" s="18"/><c r="D' + r + '" s="18"/><c r="E' + r + '" s="41"><v>' + tps + '</v></c><c r="F' + r + '" s="18"/></row>';
-  r = 15 + N;
-  xml += '<row r="' + r + '" ht="21.75" customHeight="1"><c r="B' + r + '" s="42" t="s"><v>25</v></c><c r="C' + r + '" s="43"/><c r="D' + r + '" s="43"/><c r="E' + r + '" s="43" t="s"><v>26</v></c><c r="F' + r + '" s="44"/></row>';
-  r = 16 + N;
-  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="42" t="s"><v>27</v></c><c r="C' + r + '" s="43"/><c r="D' + r + '" s="43"/><c r="E' + r + '" s="45"><v>' + total + '</v></c></row>';
-  r = 17 + N;
-  xml += '<row r="' + r + '" ht="21.0" customHeight="1"><c r="B' + r + '" s="46"/></row>';
-  r = 18 + N;
-  xml += '<row r="' + r + '" ht="30.0" customHeight="1"><c r="B' + r + '" s="47" t="s"><v>28</v></c></row>';
-  r = 19 + N;
-  xml += '<row r="' + r + '" ht="30.0" customHeight="1"><c r="B' + r + '" s="48" t="s"><v>29</v></c></row>';
+  // Separator stripe
+  var sep = 13 + N;
+  xml += '<row r="' + sep + '" ht="6" customHeight="1">';
+  xml += '<c r="A' + sep + '" s="1"/><c r="B' + sep + '" s="19"/><c r="C' + sep + '" s="19"/><c r="D' + sep + '" s="19"/><c r="E' + sep + '" s="19"/>';
+  xml += '</row>';
+
+  // Summary rows
+  function sumRow(offset, label, value, labelSty, valueSty) {
+    var r3 = 14 + N + offset;
+    xml += '<row r="' + r3 + '" ht="16" customHeight="1">';
+    xml += '<c r="A' + r3 + '" s="1"/>';
+    xml += '<c r="D' + r3 + '" s="' + labelSty + '" t="inlineStr"><is><t>' + label + '</t></is></c>';
+    xml += '<c r="E' + r3 + '" s="' + valueSty + '" t="inlineStr"><is><t>' + value + '</t></is></c>';
+    xml += '</row>';
+  }
+  sumRow(0, 'Subtotal',     fmtMoney_(subtotal), '20', '18');
+  sumRow(1, 'TPS (5%)',     fmtMoney_(tps),      '20', '18');
+  sumRow(2, 'TVQ (9.975%)', fmtMoney_(tvq),      '20', '18');
+  sumRow(3, 'TOTAL',        fmtMoney_(total),    '21', '22');
+
+  // Empty row before footer
+  var emptyR = 18 + N;
+  xml += '<row r="' + emptyR + '"><c r="A' + emptyR + '" s="1"/></row>';
+
+  // Blue stripe
+  var stripeR = 19 + N;
+  xml += '<row r="' + stripeR + '" ht="8" customHeight="1">';
+  xml += '<c r="A' + stripeR + '" s="1"/><c r="B' + stripeR + '" s="7"/><c r="C' + stripeR + '" s="7"/><c r="D' + stripeR + '" s="7"/><c r="E' + stripeR + '" s="7"/>';
+  xml += '</row>';
+
+  // Footer text (merged B:E in mergeCells)
+  var footR = 20 + N;
+  xml += '<row r="' + footR + '" ht="14" customHeight="1">';
+  xml += '<c r="A' + footR + '" s="1"/>';
+  xml += '<c r="B' + footR + '" s="23" t="inlineStr"><is><t>TPS # 744633553 RT0001     |     TVQ # 4002578340 TQ0001     |     Payment: by direct deposit</t></is></c>';
+  xml += '</row>';
+
+  // Thank you (merged B:E in mergeCells)
+  var tyR = 21 + N;
+  xml += '<row r="' + tyR + '" ht="20" customHeight="1">';
+  xml += '<c r="A' + tyR + '" s="1"/>';
+  xml += '<c r="B' + tyR + '" s="24" t="inlineStr"><is><t>Thank you for your trust!</t></is></c>';
+  xml += '</row>';
+
+  // Empty
+  var emptyR2 = 22 + N;
+  xml += '<row r="' + emptyR2 + '"><c r="A' + emptyR2 + '" s="1"/></row>';
+
+  // Sign-off (C:E merged)
+  var signR = 23 + N;
+  xml += '<row r="' + signR + '" ht="18" customHeight="1">';
+  xml += '<c r="A' + signR + '" s="1"/>';
+  xml += '<c r="B' + signR + '" s="25" t="inlineStr"><is><t>Execaire sign-off :</t></is></c>';
+  xml += '<c r="C' + signR + '" s="10" t="inlineStr"><is><t>_______________________________</t></is></c>';
+  xml += '</row>';
 
   return xml;
 }
@@ -1096,6 +1156,14 @@ function normalizeDatesInSheet() {
   range.setNumberFormat('yyyy-MM-dd');
   range.setValues(updates);
   Logger.log('Dates normalisées en yyyy-MM-dd: ' + (lastRow - 1) + ' lignes.');
+}
+
+function resetJuneGenerated() {
+  const props = PropertiesService.getScriptProperties();
+  const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete gen['2026-06|Innotech'];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
+  Logger.log('June 2026 cleared from INVOICES_GENERATED.');
 }
 
 function listInvoiceFiles() {
