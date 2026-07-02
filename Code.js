@@ -886,6 +886,17 @@ function generateInvoice_(key, month, employer, allRows) {
 
   const newEntries = zipEntries.map(function(entry) {
     const name = entry.getName();
+    if (name === 'xl/workbook.xml') {
+      let wbXml = entry.getDataAsString('UTF-8');
+      const lastRow = 23 + N;
+      const printArea = "'Invoice'!$A$1:$E$" + lastRow;
+      if (wbXml.indexOf('_xlnm.Print_Area') !== -1) {
+        wbXml = wbXml.replace(/'Invoice'!\$A\$1:\$E\$\d+/, printArea);
+      } else {
+        wbXml = wbXml.replace('<definedNames />', '<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">' + printArea + '</definedName></definedNames>');
+      }
+      return Utilities.newBlob(wbXml, 'application/xml', name);
+    }
     if (name !== 'xl/worksheets/sheet1.xml') return entry;
 
     let xml = entry.getDataAsString('UTF-8');
@@ -956,7 +967,7 @@ function buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N) {
     var planeStr = (!plane || String(plane) === 'None') ? '' : xmlEscape_(String(plane));
     var hours = row[COL.HOURS - 1] || 0;
     var amount = row[COL.SALARY - 1] || 0;
-    xml += '<row r="' + r + '" ht="18" customHeight="1">';
+    xml += '<row r="' + r + '" ht="26" customHeight="1">';
     xml += '<c r="A' + r + '" s="1"/>';
     xml += '<c r="B' + r + '" s="' + sBtC + '" t="inlineStr"><is><t>' + dateStr + '</t></is></c>';
     xml += '<c r="C' + r + '" s="' + sBtC + '" t="inlineStr"><is><t>' + planeStr + '</t></is></c>';
@@ -980,7 +991,7 @@ function buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N) {
   // Summary rows
   function sumRow(offset, label, value, labelSty, valueSty) {
     var r3 = 14 + N + offset;
-    xml += '<row r="' + r3 + '" ht="16" customHeight="1">';
+    xml += '<row r="' + r3 + '" ht="22" customHeight="1">';
     xml += '<c r="A' + r3 + '" s="1"/>';
     xml += '<c r="D' + r3 + '" s="' + labelSty + '" t="inlineStr"><is><t>' + label + '</t></is></c>';
     xml += '<c r="E' + r3 + '" s="' + valueSty + '" t="inlineStr"><is><t>' + value + '</t></is></c>';
@@ -1010,7 +1021,7 @@ function buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N) {
 
   // Thank you (merged B:E in mergeCells)
   var tyR = 21 + N;
-  xml += '<row r="' + tyR + '" ht="20" customHeight="1">';
+  xml += '<row r="' + tyR + '" ht="28" customHeight="1">';
   xml += '<c r="A' + tyR + '" s="1"/>';
   xml += '<c r="B' + tyR + '" s="24" t="inlineStr"><is><t>Thank you for your trust!</t></is></c>';
   xml += '</row>';
