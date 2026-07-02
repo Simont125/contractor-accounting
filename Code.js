@@ -1177,6 +1177,14 @@ function resetJuneGenerated() {
   Logger.log('June 2026 cleared from INVOICES_GENERATED.');
 }
 
+function resetMayGenerated() {
+  const props = PropertiesService.getScriptProperties();
+  const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete gen['2026-05|Innotech'];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
+  Logger.log('May 2026 cleared from INVOICES_GENERATED.');
+}
+
 function listInvoiceFiles() {
   const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
   const files = folder.getFiles();
