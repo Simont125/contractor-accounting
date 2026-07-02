@@ -1080,6 +1080,78 @@ function inspectAndFixFactureMap() {
   Logger.log('Fixed: 2026-06|Innotech -> Facture 0010');
 }
 
+function normalizeDatesInSheet() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const dateCol = COL.DATE;
+  const range = sheet.getRange(2, dateCol, lastRow - 1, 1);
+  const values = range.getValues();
+  const updates = values.map(row => {
+    const val = row[0];
+    if (!val) return [val];
+    const normalized = normalizeDateKey(val);
+    return [normalized || val];
+  });
+  range.setNumberFormat('yyyy-MM-dd');
+  range.setValues(updates);
+  Logger.log('Dates normalisées en yyyy-MM-dd: ' + (lastRow - 1) + ' lignes.');
+}
+
+function listInvoiceFiles() {
+  const folder = DriveApp.getFolderById(CONFIG.INVOICE_FOLDER_ID);
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const f = files.next();
+    Logger.log(f.getName() + ' | ' + f.getDateCreated());
+  }
+}
+
+function resetFactureMap() {
+  const props = PropertiesService.getScriptProperties();
+  const map = {
+    '2025-08|Sky Service':  'Facture 0001',
+    '2025-09|Sky Service':  'Facture 0001',
+    '2025-10|OG aviation':  'Facture 0002',
+    '2025-11|PAL airlines': 'Facture 0003',
+    '2025-12|PAL airlines': 'Facture 0004',
+    '2025-12|SkyService':   'Facture 0005',
+    '2026-02|Innotech':     'Facture 0006',
+    '2026-03|Innotech':     'Facture 0007',
+    '2026-04|Innotech':     'Facture 0008',
+    '2026-05|Innotech':     'Facture 0009',
+    '2026-06|Innotech':     'Facture 0010'
+  };
+  props.setProperty('FACTURE_MAP', JSON.stringify(map));
+  props.setProperty('FACTURE_COUNTER', '10');
+  // Mark May and June as already generated
+  const generated = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  generated['2026-05|Innotech'] = 'Invoice 0009 - May 2026 - Simon Tremblay';
+  generated['2026-06|Innotech'] = 'Invoice 0010 - June 2026 - Simon Tremblay';
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(generated));
+  Logger.log('FACTURE_MAP reset. Counter=10. May+June marked as generated.');
+}
+
+function fixAmbiguousDates() {
+  const sheet = getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const fixes = {
+    'Home Depot': '2026-06-07',
+    'Claude Pro': '2026-06-05'
+  };
+  for (let i = 0; i < data.length; i++) {
+    const desc = (data[i][COL.DESCRIPTION - 1] || '').toString();
+    for (const keyword in fixes) {
+      if (desc.indexOf(keyword) !== -1) {
+        const cell = sheet.getRange(i + 1, COL.DATE);
+        cell.setNumberFormat('yyyy-MM-dd');
+        cell.setValue(fixes[keyword]);
+        Logger.log('Fixed ' + keyword + ' date at row ' + (i + 1) + ' -> ' + fixes[keyword]);
+      }
+    }
+  }
+}
+
 function fixHomeDepotDate() {
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   const sheet = ss.getSheets()[0];
