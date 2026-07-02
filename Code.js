@@ -89,14 +89,16 @@ function rebuildSheet() {
   // Grouper par mois + employeur pour gérer plusieurs employeurs dans le même mois
   const groupMap = {};
   const groupOrder = [];
+  let currentEmployer = CONFIG.EMPLOYER;
   dataRows.forEach(row => {
     const dateStr = normalizeDateKey(row[COL.DATE - 1]);
     if (!dateStr || dateStr.length < 7) return;
     const month = dateStr.substring(0, 7);
-    const employer = (row[COL.EMPLOYER - 1] || CONFIG.EMPLOYER).toString().trim();
-    const key = month + '|' + employer;
+    const employerCell = (row[COL.EMPLOYER - 1] || '').toString().trim();
+    if (employerCell && !employerCell.startsWith('Facture')) currentEmployer = employerCell;
+    const key = month + '|' + currentEmployer;
     if (!groupMap[key]) {
-      groupMap[key] = { month, employer, rows: [] };
+      groupMap[key] = { month, employer: currentEmployer, rows: [] };
       groupOrder.push(key);
     }
     groupMap[key].rows.push(row);
