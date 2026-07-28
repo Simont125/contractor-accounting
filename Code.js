@@ -1204,6 +1204,43 @@ function normalizeDatesInSheet() {
   Logger.log('Dates normalisées en yyyy-MM-dd: ' + (lastRow - 1) + ' lignes.');
 }
 
+function monthEndProcessing() {
+  Logger.log('=== Month-end processing started ===');
+  processContractorDocuments();
+  normalizeDatesInSheet();
+  generateAllInvoices();
+  Logger.log('=== Month-end processing complete ===');
+}
+
+function createMonthEndTrigger() {
+  // Delete existing month-end triggers to avoid duplicates
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'monthEndProcessing') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  // Fire on the 1st of each month between midnight and 1am
+  ScriptApp.newTrigger('monthEndProcessing')
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(0)
+    .create();
+
+  Logger.log('Month-end trigger created: runs on the 1st of each month at midnight.');
+}
+
+function deleteMonthEndTrigger() {
+  let count = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'monthEndProcessing') {
+      ScriptApp.deleteTrigger(t);
+      count++;
+    }
+  });
+  Logger.log('Deleted ' + count + ' month-end trigger(s).');
+}
+
 function resetJulyGenerated() {
   const props = PropertiesService.getScriptProperties();
   const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
