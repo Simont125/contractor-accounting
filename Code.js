@@ -1145,6 +1145,30 @@ function debugOneExpense() {
   // File is NOT moved — debug only
 }
 
+function forceProcessReviewExpense() {
+  const folder = DriveApp.getFolderById(CONFIG.REVIEW_FOLDER_ID);
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    if (file.getName() !== '07-2026 - subway 19.30.pdf') continue;
+
+    const extraction = analyzePdfWithOpenAI(file, 'EXPENSE');
+    normalizeExtraction(extraction);
+    if (!extraction || !extraction.expense) {
+      Logger.log('Could not extract expense from ' + file.getName());
+      return;
+    }
+    extraction.expense.date = Utilities.formatDate(file.getDateCreated(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    // Skip validateExpenseMath — write as-is, tip column will capture the difference
+    extraction.needs_review = false;
+    writeExtractionToSheet(extraction);
+    moveFile(file, CONFIG.PROCESSED_EXPENSE_FOLDER_ID);
+    Logger.log('Force-written: ' + file.getName() + ' -> ' + JSON.stringify(extraction.expense));
+    return;
+  }
+  Logger.log('File not found in Review folder.');
+}
+
 function inspectAndFixFactureMap() {
   const props = PropertiesService.getScriptProperties();
   const map = JSON.parse(props.getProperty('FACTURE_MAP') || '{}');
@@ -1180,6 +1204,14 @@ function normalizeDatesInSheet() {
   Logger.log('Dates normalisées en yyyy-MM-dd: ' + (lastRow - 1) + ' lignes.');
 }
 
+function resetJulyGenerated() {
+  const props = PropertiesService.getScriptProperties();
+  const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete gen['2026-07|Innotech'];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
+  Logger.log('July 2026 cleared from INVOICES_GENERATED.');
+}
+
 function resetJuneGenerated() {
   const props = PropertiesService.getScriptProperties();
   const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
@@ -1194,6 +1226,21 @@ function resetMayGenerated() {
   delete gen['2026-05|Innotech'];
   props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
   Logger.log('May 2026 cleared from INVOICES_GENERATED.');
+}
+
+function listExpenseFolders() {
+  const folders = {
+    'A traiter': CONFIG.EXPENSE_FOLDER_ID,
+    'Traitees':  CONFIG.PROCESSED_EXPENSE_FOLDER_ID,
+    'Review':    CONFIG.REVIEW_FOLDER_ID
+  };
+  for (const name in folders) {
+    const folder = DriveApp.getFolderById(folders[name]);
+    const files = folder.getFiles();
+    const items = [];
+    while (files.hasNext()) items.push(files.next().getName());
+    Logger.log(name + ' (' + items.length + '): ' + (items.join(', ') || '(vide)'));
+  }
 }
 
 function listInvoiceFiles() {

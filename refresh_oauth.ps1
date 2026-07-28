@@ -1,4 +1,4 @@
-# OAuth flow pour clasp run - lit les credentials depuis client_secret*.json
+﻿# OAuth flow pour clasp run - lit les credentials depuis client_secret*.json
 $secretFile = Get-ChildItem -Path $PSScriptRoot -Filter "client_secret*.json" | Select-Object -First 1
 if (-not $secretFile) {
   Write-Error "Fichier client_secret*.json introuvable dans le dossier du projet."
@@ -8,7 +8,7 @@ if (-not $secretFile) {
 $creds       = Get-Content $secretFile.FullName | ConvertFrom-Json
 $clientId     = $creds.installed.client_id
 $clientSecret = $creds.installed.client_secret
-$port         = 54825
+$port = 54321
 $redirectUri  = "http://localhost:$port"
 
 $scopes = @(
@@ -44,7 +44,7 @@ $rawUrl   = $context.Request.RawUrl
 $code     = ($rawUrl -split "[?&]" | Where-Object { $_ -like "code=*" }) -replace "code=", ""
 
 $response = $context.Response
-$html     = "<html><body><h2>Authentification réussie! Vous pouvez fermer cette fenêtre.</h2></body></html>"
+$html     = "<html><body><h2>Authentification rÃ©ussie! Vous pouvez fermer cette fenÃªtre.</h2></body></html>"
 $bytes    = [System.Text.Encoding]::UTF8.GetBytes($html)
 $response.ContentLength64 = $bytes.Length
 $response.OutputStream.Write($bytes, 0, $bytes.Length)
@@ -81,3 +81,4 @@ $clasprc = @{
 $json = $clasprc | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("$env:USERPROFILE\.clasprc.json", $json, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "Token saved to ~/.clasprc.json. clasp run should now work!"
+
