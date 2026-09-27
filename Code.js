@@ -22,8 +22,8 @@ const INVOICE_CONFIG = {
   MY_ADDRESS: '843 rue Nadar, Saint-Jean-sur-Richelieu',
   MY_CITY:    'QC, Canada, J3B OE7',
   MY_PAYMENT: 'by direct deposit',
-  TPS_NUMBER: '744633553 RT0001',
-  TVQ_NUMBER: '4002578340 TQ0001',
+  TPS_NUMBER: '744633553 RT0002',
+  TVQ_NUMBER: '4002578340 TQ0003',
   SIGN_OFF:   'Execaire sign-off : ___________________________',
   TEMPLATE_FILE_ID: '19yOcaYM2xk5DyMeGmYfDfkVORn71ykRD',
   EMPLOYERS: {
