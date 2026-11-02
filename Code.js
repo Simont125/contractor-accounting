@@ -1027,7 +1027,7 @@ function buildNewInvoiceRowsXml_(salaryRows, subtotal, tps, tvq, total, N) {
   var footR = 20 + N;
   xml += '<row r="' + footR + '" ht="14" customHeight="1">';
   xml += '<c r="A' + footR + '" s="1"/>';
-  xml += '<c r="B' + footR + '" s="23" t="inlineStr"><is><t>TPS # 744633553 RT0001     |     TVQ # 4002578340 TQ0001     |     Payment: by direct deposit</t></is></c>';
+  xml += '<c r="B' + footR + '" s="23" t="inlineStr"><is><t>TPS # ' + INVOICE_CONFIG.TPS_NUMBER + '     |     TVQ # ' + INVOICE_CONFIG.TVQ_NUMBER + '     |     Payment: ' + INVOICE_CONFIG.MY_PAYMENT + '</t></is></c>';
   xml += '</row>';
 
   // Thank you (merged B:E in mergeCells)
