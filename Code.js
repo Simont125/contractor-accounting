@@ -1241,6 +1241,26 @@ function deleteMonthEndTrigger() {
   Logger.log('Deleted ' + count + ' month-end trigger(s).');
 }
 
+// Generic reset: set Script Property RESET_MONTH to 'YYYY-MM|Employer' then call this.
+// e.g. set RESET_MONTH = '2026-10|Innotech' then run resetInvoiceMonth()
+function resetInvoiceMonth() {
+  const props = PropertiesService.getScriptProperties();
+  const key = props.getProperty('RESET_MONTH');
+  if (!key) { Logger.log('Set Script Property RESET_MONTH first (e.g. 2026-10|Innotech).'); return; }
+  const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete gen[key];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
+  Logger.log('Cleared from INVOICES_GENERATED: ' + key);
+}
+
+function resetOctoberGenerated() {
+  const props = PropertiesService.getScriptProperties();
+  const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
+  delete gen['2026-10|Innotech'];
+  props.setProperty('INVOICES_GENERATED', JSON.stringify(gen));
+  Logger.log('October 2026 cleared from INVOICES_GENERATED.');
+}
+
 function resetJulyGenerated() {
   const props = PropertiesService.getScriptProperties();
   const gen = JSON.parse(props.getProperty('INVOICES_GENERATED') || '{}');
